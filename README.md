@@ -88,32 +88,42 @@ Or click **Execute Workflow** to run manually.
 
 ## Deploy for Free on Oracle Cloud (24/7)
 
-Oracle Cloud offers an **Always Free** tier with a real VM that runs indefinitely.
+> ⚠️ **Cloud Shell ≠ Free VM.** Oracle Cloud Shell is a browser terminal — it times out, has no sudo, and can't run persistent services. You need a **Compute Instance** (free, takes 3 min to create).
 
-### 1. Create a free Oracle Cloud account
-→ https://www.oracle.com/cloud/free/  
-Choose **VM.Standard.A1.Flex** (4 OCPU, 24 GB RAM — always free)
+### 1. Create a free Oracle Cloud Compute VM
 
-### 2. SSH into the VM and install Docker
+1. Log in → **Compute → Instances → Create Instance**
+2. Name it anything (e.g. `n8n-server`)
+3. Click **Change Shape** → choose **VM.Standard.A1.Flex** (ARM, 4 OCPU / 24 GB — Always Free)
+4. Under **Networking** → make sure a public IP is assigned
+5. **Add SSH key** (download the private key)
+6. Click **Create**
+
+### 2. Open port 5678 in Oracle's firewall
+
+**Console → Networking → Virtual Cloud Networks → your VCN → Security Lists → Default → Add Ingress Rule:**
+- Source: `0.0.0.0/0`
+- Protocol: `TCP`
+- Destination Port: `5678`
+
+### 3. SSH into the VM and run one command
 
 ```bash
-# Ubuntu 22.04 on Oracle Cloud
-sudo apt update && sudo apt install -y docker.io docker-compose-plugin curl git
-sudo usermod -aG docker $USER && newgrp docker
-```
+# SSH in (replace with your actual IP and key path)
+ssh -i ~/Downloads/your-key.pem ubuntu@<vm-public-ip>
 
-### 3. Clone and start
-
-```bash
+# On the VM — one command does everything:
 git clone https://github.com/fineanmol/n8n-linkedin-pm-jobs.git
 cd n8n-linkedin-pm-jobs
-cp .env.example .env
-nano .env   # set a strong password
-
-# Open port 5678 in Oracle's security group / VCN rules
-docker compose up -d
-bash scripts/import-workflow.sh
+bash scripts/setup.sh
 ```
+
+`setup.sh` automatically:
+- Installs Docker + Docker Compose (no sudo issues)
+- Generates a random password
+- Builds and starts both containers
+- Imports the workflow
+- Prints the URL, username and password
 
 ### 4. Access n8n
 `http://<your-oracle-vm-ip>:5678`
