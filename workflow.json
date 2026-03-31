@@ -1,0 +1,1830 @@
+{
+  "name": "LinkedIn Job Automation \u2014 New Workflow with De-duplicate logic",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-proxyurl",
+              "name": "proxyUrl",
+              "value": "http://linkedin-proxy:9877/fetch",
+              "type": "string"
+            },
+            {
+              "id": "c1",
+              "name": "searchQueries",
+              "value": "Product Manager,Product Owner,Junior Product Manager,Associate Product Manager,Technical Product Manager",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "searchLocation",
+              "value": "Germany",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "spreadsheetId",
+              "value": "YOUR_SPREADSHEETID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "yourEmail",
+              "value": "YOUR_YOUREMAIL_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c5",
+              "name": "resumeDocId",
+              "value": "YOUR_RESUMEDOCID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "openAiApiKey",
+              "value": "YOUR_OPENAIAPIKEY_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c7",
+              "name": "apifyApiKey",
+              "value": "YOUR_APIFYAPIKEY_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c8",
+              "name": "fullName",
+              "value": "YOUR_FULLNAME_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c9",
+              "name": "phoneNumber",
+              "value": "YOUR_PHONENUMBER_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c10",
+              "name": "linkedInProfile",
+              "value": "YOUR_LINKEDINPROFILE_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c11",
+              "name": "jobsPerQuery",
+              "value": 50,
+              "type": "number"
+            },
+            {
+              "id": "c12",
+              "name": "maxApplyPerRun",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "cfg-pmkeywords",
+              "name": "pmKeywords",
+              "value": "product, product manager,product owner,product management,head of product,director of product,vp of product,vp product,chief product,product lead,product strategy,associate product,junior product,senior product,technical product,principal product,group product,product marketing manager,product operations",
+              "type": "string"
+            },
+            {
+              "id": "cfg-englishonly",
+              "name": "englishOnly",
+              "value": "false",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e85e5b63-5223-4a87-9efc-a3c1c9bfdc29",
+      "name": "\u2699\ufe0f Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        -720,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c8b5c023-60ca-4dd8-9be9-46cacaf70d92",
+      "name": "\u23f0 Scraper: Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $input.first().json;\nconst queries = cfg.searchQueries.split(',').map(q => q.trim()).filter(Boolean);\n// 2 pages per query: start=0 and start=25 \u2192 50 jobs per keyword\nreturn queries.flatMap((q, i) => [\n  { json: { ...cfg, currentQuery: q, queryIndex: i * 2,     pageStart: 0  } },\n  { json: { ...cfg, currentQuery: q, queryIndex: i * 2 + 1, pageStart: 25 } }\n]);"
+      },
+      "id": "50ac7f6c-13ac-408d-8780-4089794804fd",
+      "name": "\ud83d\udcdd Split Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('\u2699\ufe0f Config').first().json.proxyUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "=https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={{ encodeURIComponent($json.currentQuery) }}&location={{ encodeURIComponent($json.searchLocation) }}&start={{ $json.pageStart || 0 }}&count=25&sortBy=DD&f_TPR=r86400"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "2b90a9c9-3f83-421f-bb77-753425af936d",
+      "name": "\ud83d\udd0d LinkedIn Guest API - Search Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        80
+      ],
+      "continueOnFail": true,
+      "notes": "Uses LinkedIn's FREE public guest API \u2014 no API key required. Returns HTML job cards posted in last 24h. f_TPR=r86400 means last 24 hours."
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "5a3d2c56-2d1e-4255-9327-2343111d09c3",
+      "name": "\u23f3 Wait 3s Between Queries",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "wait-scraper"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse LinkedIn Guest API HTML response into structured job data\n// LinkedIn returns HTML <li> elements, one per job card\nconst items = $input.all();\nconst jobs = [];\n\nfor (const item of items) {\n  // The response body is a string of HTML\n  const html = typeof item.json === 'string' ? item.json : (item.json.data || item.json.body || '');\n  if (!html || html.length < 50) continue;\n\n  // Split into individual job card blocks by list item\n  const blocks = html.split(/<\\/li>/);\n\n  for (const block of blocks) {\n    try {\n      // Extract LinkedIn job ID from data-entity-urn or data-job-id\n      const jobIdMatch = block.match(/data-entity-urn=\"urn:li:jobPosting:(\\d+)\"/) ||\n                         block.match(/data-job-id=\"(\\d+)\"/) ||\n                         block.match(/\\/jobs\\/view\\/(\\d+)/);\n      if (!jobIdMatch) continue;\n      const jobId = jobIdMatch[1];\n\n      // Extract job title\n      const titleMatch = block.match(/base-search-card__title[^>]*>\\s*([^<]+)\\s*</) ||\n                         block.match(/<h3[^>]*>\\s*([^<]+)\\s*<\\/h3>/);\n\n      // Extract company name  \n      const companyMatch = block.match(/base-search-card__subtitle[^>]*>[\\s\\S]*?<[^>]+>\\s*([^<]+)\\s*<\\//) ||\n                           block.match(/base-search-card__subtitle[^>]*>\\s*([^<]+)\\s*</);\n\n      // Extract location\n      const locationMatch = block.match(/job-search-card__location[^>]*>\\s*([^<]+)\\s*</) ||\n                            block.match(/base-search-card__metadata[^>]*>\\s*([^<]+)\\s*</);\n\n      // Extract job URL\n      const urlMatch = block.match(/href=\"(https:\\/\\/[\\w.]*linkedin\\.com\\/jobs\\/view\\/[^\"?]+)/);\n\n      // Extract posted date\n      const dateMatch = block.match(/datetime=\"([\\d-]+T?[\\d:Z.-]*)\"/);\n\n      // Check for Easy Apply indicator\n      const isEasyApply = /easy.apply/i.test(block) || /data-easy-apply/i.test(block);\n\n      // Check for remote\n      const isRemote = /\\bremote\\b/i.test(block) || /\\bhome.?office\\b/i.test(block);\n\n      const company = companyMatch ? companyMatch[1].trim().replace(/\\s+/g, ' ') : 'Unknown';\n      const position = titleMatch ? titleMatch[1].trim().replace(/\\s+/g, ' ') : 'Unknown';\n\n      if (company === 'Unknown' && position === 'Unknown') continue;\n\n      jobs.push({\n        job_id: `li_${jobId}`,\n        company,\n        position,\n        location: locationMatch ? locationMatch[1].trim().replace(/\\s+/g, ' ') : 'Unknown',\n        job_url: urlMatch ? urlMatch[1] : `https://www.linkedin.com/jobs/view/${jobId}/`,\n        apply_type: isEasyApply ? 'LinkedIn Easy Apply' : 'LinkedIn External',\n        is_linkedin: 'Yes',\n        is_remote: isRemote ? 'Yes' : 'No',\n        employment_type: 'FULLTIME',\n        posted_date: dateMatch ? dateMatch[1].split('T')[0] : new Date().toISOString().split('T')[0],\n        description: '',\n        status: 'Not Applied',\n        priority: 'Medium',\n        applied_date: '',\n        cover_letter_generated: 'No',\n        resume_optimized: 'No',\n        missing_skills: '',\n        application_id: '',\n        notes: '',\n        last_checked: new Date().toISOString().split('T')[0]\n      });\n    } catch(e) {\n      // Skip malformed block\n    }\n  }\n}\n\nconsole.log(`Parsed ${jobs.length} jobs from LinkedIn`);\nreturn jobs.length > 0 ? jobs.map(j => ({ json: j })) : [{ json: { job_id: '', hasNewJobs: false, _empty: true } }];"
+      },
+      "id": "142d7149-3d72-495f-9dac-35070076680b",
+      "name": "\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "options": {}
+      },
+      "id": "282ca648-287b-4a75-9bde-b1cca6b9a9e2",
+      "name": "\ud83d\udcca Get Existing Job IDs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        512,
+        48
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const incomingJobs = $('\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data').all();\nconst sheetRows = $('\ud83d\udcca Get Existing Job IDs').all();\n\n// \u2500\u2500 READ FROM CONFIG (change values in \u2699\ufe0f Config node, not here) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst cfg = $('\u2699\ufe0f Config').first().json;\n\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\nconst PM_KEYWORDS   = String(cfg.pmKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\n// \u2500\u2500 LANGUAGE FILTER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction isEnglishJob(title) {\n  if (!ENGLISH_ONLY) return true;           // skip filter if disabled in Config\n  const t = (title || '').toLowerCase();\n\n  // Block German gender notation \u2014 only \"w\" variants (weiblich), NOT (m/f/d)\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/\\([mwfd]+\\/[mwfd]*w[mwfd]*\\/[dxm]\\)/i.test(t)) return false;\n\n  // German female-form suffixes: /in, *in\n  if (/\\/in[\\s),]|\\/in$|\\*in/i.test(t)) return false;\n\n  // German-specific characters (\u00e4 \u00f6 \u00fc \u00df)\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n\n  // German words in job titles\n  const germanWords = [\n    ' f\u00fcr ', ' und ', ' mit ', ' bei ', ' als ', ' von ', ' zur ', ' zum ',\n    ' der ', ' die ', ' das ', ' im ', ' zu ',\n    'entwickler', 'leiter', 'berater', 'mitarbeiter', 'teamleiter',\n    'projektleiter', 'sachbearbeiter', 'kaufmann', 'kauffrau',\n    'fachkraft', 'stellenangebot', 'gesucht', 'vollzeit', 'teilzeit',\n    'festanstellung', 'unbefristet', 'befristet', 'ausbildung',\n    'praktikum', 'werkstudent', 'referent', 'fachinformatiker'\n  ];\n  if (germanWords.some(w => t.includes(w))) return false;\n\n  return true;\n}\n\n// \u2500\u2500 ROLE RELEVANCE FILTER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction isPmRole(title) {\n  if (PM_KEYWORDS.length === 0) return true;  // skip if no keywords set\n  const t = (title || '').toLowerCase();\n  return PM_KEYWORDS.some(kw => t.includes(kw));\n}\n\n// \u2500\u2500 PIPELINE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n// Step 1: within-run deduplication (same job from multiple queries/pages)\nconst seenInRun = new Set();\nconst deduped = incomingJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  return true;\n});\n\n// Step 2: language filter\nconst englishJobs = deduped.filter(item =>\n  isEnglishJob(item.json.position || item.json.title || '')\n);\n\n// Step 3: role relevance filter (from Config \u2192 pmKeywords)\nlet nonPmCount = 0;\nconst pmJobs = englishJobs.filter(item => {\n  const title = item.json.position || item.json.title || '';\n  if (!isPmRole(title)) { nonPmCount++; return false; }\n  return true;\n});\n\n// Step 4: exclude jobs already in the sheet\nconst existingIds = new Set(\n  sheetRows.map(item => {\n    const id = item.json.job_id || item.json.Job_ID || item.json['job id'] || '';\n    return String(id).trim();\n  }).filter(id => id.length > 3)\n);\n\nconsole.log(`Raw:${incomingJobs.length} \u2192 deduped:${deduped.length} \u2192 EN:${englishJobs.length} \u2192 PM:${pmJobs.length} (+${nonPmCount} non-PM skipped) \u2192 sheet:${existingIds.size}`);\nconsole.log(`Config \u2192 englishOnly:${ENGLISH_ONLY}, pmKeywords count:${PM_KEYWORDS.length}`);\n\nconst newJobs = pmJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  return jobId.length > 3 && !existingIds.has(jobId) && !item.json._empty;\n});\n\nconsole.log(`\u2705 ${newJobs.length} new jobs to save`);\n\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
+      },
+      "id": "38a9bda4-4adb-434f-a50f-bed76023cab7",
+      "name": "\ud83d\udd0e Filter New Jobs Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ !$json._noNew }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "adb1adba-cbc0-49d1-b4e5-86f8033c2ec1",
+      "name": "\u2753 New Jobs Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        992,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "position",
+              "displayName": "position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_url",
+              "displayName": "job_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "apply_type",
+              "displayName": "apply_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_linkedin",
+              "displayName": "is_linkedin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_remote",
+              "displayName": "is_remote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "employment_type",
+              "displayName": "employment_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "skill_match_score",
+              "displayName": "skill_match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "missing_skills",
+              "displayName": "missing_skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "posted_date",
+              "displayName": "posted_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "applied_date",
+              "displayName": "applied_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_checked",
+              "displayName": "last_checked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "application_id",
+              "displayName": "application_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cover_letter_generated",
+              "displayName": "cover_letter_generated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "resume_optimized",
+              "displayName": "resume_optimized",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "job_summary",
+              "displayName": "job_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hasNewJobs",
+              "displayName": "hasNewJobs",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "783d576c-28a3-4f7a-a841-4c98d01b778c",
+      "name": "\ud83d\udcbe Save New Jobs to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1232,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "agarwal.anmol2004@gmail.com",
+        "subject": "=\ud83c\udd95 {{ $input.all().length }} New English PM Jobs \u2013 {{ $now.toFormat('MMM d, yyyy') }}",
+        "message": "=<h2 style=\"color:#0073b1\">{{ $input.all().length }} New Product Manager Jobs Found \ud83c\udfaf</h2>\n<p style=\"color:#666\">Scraped from LinkedIn \u00b7 {{ $now.toFormat('MMM d, yyyy HH:mm') }} \u00b7 English-language only \u00b7 Germany</p>\n<table border=\"0\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%;font-family:Arial,sans-serif\">\n  <tr style=\"background:#f3f2ef\">\n    <th align=\"left\">Role</th><th align=\"left\">Company</th><th align=\"left\">Location</th><th align=\"left\">Type</th>\n  </tr>\n{{ $input.all().map((j,i) => `  <tr style=\"background:${i%2===0?'#fff':'#f9f9f9'}\">\n    <td><a href=\"${j.json.job_url || j.json.url || '#'}\" style=\"color:#0073b1;font-weight:bold\">${j.json.position || j.json.title}</a></td>\n    <td>${j.json.company}</td>\n    <td>${j.json.location || 'Germany'}</td>\n    <td>${j.json.apply_type || 'Apply'}</td>\n  </tr>`).join('\\n') }}\n</table>\n<br><p style=\"color:#999;font-size:12px\">Sent by your n8n LinkedIn automation \u00b7 <a href=\"https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM\">View full sheet</a></p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "cad0462e-949f-455b-a842-85fdcbcefff8",
+      "name": "\ud83d\udce7 Email: New Jobs Found",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1472,
+        0
+      ],
+      "webhookId": "d9757bdf-7f43-4429-96ac-e480c5ee2fea",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "2b4253ec-f895-4302-8862-456841091c01",
+      "name": "\ud83d\udeab No New Jobs (Skip)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "65d4f345-97d1-4ef7-a086-b2b122431fb4",
+      "name": "\u23f0 Apply Trigger: 9 AM Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "options": {}
+      },
+      "id": "73173840-fcbc-41a0-a274-69c3d8efd717",
+      "name": "\ud83d\udcca Get Jobs to Apply",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -480,
+        480
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-jobs",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "de6d1dec-4ee6-4ce0-a5b6-3d2c84bc8d6a",
+      "name": "\u2753 Jobs Available to Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3dba0436-efca-4aca-b9a5-0ab78ff16899",
+      "name": "\ud83d\udce6 Process One Job at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        0,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{{ $json.job_id.replace('li_', '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "en-US,en;q=0.9"
+            },
+            {
+              "name": "Referer",
+              "value": "https://www.linkedin.com/jobs/search/"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "b661e8e9-fb55-40b7-9427-631804b80e1e",
+      "name": "\ud83d\udcc4 Fetch Full Job Description",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        448
+      ],
+      "notes": "Fetches the full job posting from LinkedIn's guest API \u2014 free, no key needed. Used to get description for ATS analysis."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract full description and Easy Apply status from LinkedIn job page HTML\nconst jobData = $('\ud83d\udce6 Process One Job at a Time').first().json;\nconst html = typeof $input.first().json === 'string' \n  ? $input.first().json \n  : ($input.first().json.data || $input.first().json.body || '');\n\n// Extract description - LinkedIn wraps it in .description__text\nlet description = '';\nconst descMatch = html.match(/class=\"description__text[^\"]*\"[^>]*>([\\s\\S]*?)<\\/div>\\s*<\\/section>/) ||\n                  html.match(/show-more-less-html__markup[^>]*>([\\s\\S]*?)<\\/div>/) ||\n                  html.match(/<section[^>]*description[^>]*>([\\s\\S]{100,5000})/);\nif (descMatch) {\n  // Strip HTML tags and normalize whitespace\n  description = descMatch[1]\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim()\n    .substring(0, 5000);\n}\n\n// Detect Easy Apply from actual job page (more reliable than search page)\nconst isEasyApply = /easy.apply/i.test(html) || /applyButton.*easy/i.test(html);\n\nreturn [{\n  json: {\n    ...jobData,\n    description: description || `${jobData.position} at ${jobData.company} in ${jobData.location}`,\n    apply_type: isEasyApply ? 'LinkedIn Easy Apply' : (jobData.apply_type || 'LinkedIn External')\n  }\n}];"
+      },
+      "id": "23d5dad0-ec6c-42a3-aa49-b246ea7bdc0b",
+      "name": "\ud83d\udd0d Parse Full Description",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('\u2699\ufe0f Config').first().json.openAiApiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an ATS expert. Extract key skills and requirements from job descriptions. Return ONLY valid JSON.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Analyze this job description and extract:\\n1. required_skills: array of technical/hard skills\\n2. nice_to_have_skills: array of optional skills\\n3. ats_keywords: array of important ATS keywords\\n4. experience_years: minimum years required (number or null)\\n5. job_summary: 2-sentence summary\\n\\nReturn as JSON only. Job Description:\\n\\n{{ $json.description }}\"\n    }\n  ],\n  \"temperature\": 0.2,\n  \"max_tokens\": 800\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "0d4358d9-26e4-4cc8-b41c-24367e4b0b26",
+      "name": "\ud83e\udd16 OpenAI: Extract Skills from JD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI response and attach to job data\nconst jobData = $('\ud83d\udd0d Parse Full Description').first().json;\nconst openAiResponse = $input.first().json;\n\nlet extractedData = {\n  required_skills: [],\n  nice_to_have_skills: [],\n  ats_keywords: [],\n  experience_years: null,\n  job_summary: ''\n};\n\ntry {\n  const content = openAiResponse.choices[0].message.content;\n  // Remove markdown code blocks if present\n  const cleanJson = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  extractedData = JSON.parse(cleanJson);\n} catch(e) {\n  console.error('Failed to parse OpenAI response:', e.message);\n}\n\nreturn [{\n  json: {\n    ...jobData,\n    extracted_skills: JSON.stringify(extractedData.required_skills || []),\n    ats_keywords: JSON.stringify(extractedData.ats_keywords || []),\n    nice_to_have: JSON.stringify(extractedData.nice_to_have_skills || []),\n    experience_years: extractedData.experience_years,\n    job_summary: extractedData.job_summary || ''\n  }\n}];"
+      },
+      "id": "c02dee27-9cc5-43f7-8624-a1bf48c747c5",
+      "name": "\ud83d\udcdd Parse Extracted Skills",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1860033113,
+          "mode": "list",
+          "cachedResultName": "My Skills",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=1860033113"
+        },
+        "options": {}
+      },
+      "id": "ff98edf9-ab91-41fa-b315-5a50b315063f",
+      "name": "\ud83d\udcca Get My Skills Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        720,
+        336
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare job required skills against my skills and find gaps\nconst jobData = $('\ud83d\udcdd Parse Extracted Skills').first().json;\nconst mySkillsData = $('\ud83d\udcca Get My Skills Sheet').all();\n\n// Build my skills set (lowercase for comparison)\nconst mySkills = new Set(\n  mySkillsData\n    .map(item => (item.json.skill || item.json.Skill || '').toLowerCase().trim())\n    .filter(s => s.length > 0)\n);\n\n// Parse required skills from job\nlet requiredSkills = [];\nlet atsKeywords = [];\ntry {\n  requiredSkills = JSON.parse(jobData.extracted_skills || '[]');\n  atsKeywords = JSON.parse(jobData.ats_keywords || '[]');\n} catch(e) {}\n\n// Find skills I don't have\nconst missingSkills = requiredSkills.filter(skill => {\n  const skillLower = skill.toLowerCase();\n  // Check if any of my skills partially match\n  return !Array.from(mySkills).some(mySkill => \n    mySkill.includes(skillLower) || skillLower.includes(mySkill)\n  );\n});\n\n// Find missing ATS keywords\nconst missingKeywords = atsKeywords.filter(kw => {\n  const kwLower = kw.toLowerCase();\n  return !Array.from(mySkills).some(mySkill => mySkill.includes(kwLower) || kwLower.includes(mySkill));\n});\n\nconsole.log(`Job: ${jobData.position} @ ${jobData.company}`);\nconsole.log(`Required skills: ${requiredSkills.length}, Missing: ${missingSkills.length}`);\n\nreturn [{\n  json: {\n    ...jobData,\n    missing_skills: missingSkills.join(', '),\n    missing_keywords: missingKeywords.join(', '),\n    needs_resume_update: missingSkills.length > 0 || missingKeywords.length > 0,\n    skill_match_score: requiredSkills.length > 0 \n      ? Math.round(((requiredSkills.length - missingSkills.length) / requiredSkills.length) * 100) \n      : 100\n  }\n}];"
+      },
+      "id": "7a2d3afe-a2d4-4570-ba9f-c662a44855be",
+      "name": "\ud83d\udd0d Find Skill Gaps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-resume",
+              "leftValue": "={{ $json.needs_resume_update }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f993154f-5623-4879-9670-20561cb489ab",
+      "name": "\u2753 Resume Update Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $('\u2699\ufe0f Config').first().json.resumeDocId }}"
+      },
+      "id": "30049077-aba4-44ea-b446-a2b7ac4031b9",
+      "name": "\ud83d\udcc4 Get Resume from Google Docs",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        368
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('\u2699\ufe0f Config').first().json.openAiApiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert resume writer and ATS specialist. Add missing skills to the resume's skills section naturally and professionally. Return only the updated resume text, preserving formatting.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Update this resume to include these missing skills/keywords for ATS optimization: {{ $('\ud83d\udd0d Find Skill Gaps').first().json.missing_skills }}, {{ $('\ud83d\udd0d Find Skill Gaps').first().json.missing_keywords }}\\n\\nAdd these naturally to the Skills section only. Do not invent experience you don't have - only add skills that could reasonably be part of the candidate's background or are transferable.\\n\\nJob being applied to: {{ $('\ud83d\udce6 Process One Job at a Time').first().json.position }} at {{ $('\ud83d\udce6 Process One Job at a Time').first().json.company }}\\n\\nCurrent Resume:\\n{{ $('\ud83d\udcc4 Get Resume from Google Docs').first().json.body }}\"\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 2000\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "26b8ab03-d2f7-4fa0-9345-85f77b2f3556",
+      "name": "\u270f\ufe0f OpenAI: Optimize Resume for ATS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the optimized resume content\nconst response = $input.first().json;\nconst optimizedText = response.choices[0].message.content;\n\nreturn [{\n  json: {\n    ...($('\ud83d\udd0d Find Skill Gaps').first().json),\n    optimized_resume_text: optimizedText,\n    resume_was_updated: true\n  }\n}];"
+      },
+      "id": "3a9c15ba-73ba-4111-aa5e-8cf270074668",
+      "name": "\ud83d\udcdd Parse Optimized Resume",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through without resume update\nconst jobData = $('\ud83d\udd0d Find Skill Gaps').first().json;\nreturn [{\n  json: {\n    ...jobData,\n    optimized_resume_text: null,\n    resume_was_updated: false\n  }\n}];"
+      },
+      "id": "020b142c-d92e-425a-912e-9774151ad79a",
+      "name": "\u2705 Resume Already Optimized",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "a502479a-56a2-46cc-ada1-8431dc3f2b38",
+      "name": "\ud83d\udd00 Merge Resume Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2160,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('\u2699\ufe0f Config').first().json.openAiApiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a professional cover letter writer. Write compelling, personalized cover letters that highlight relevant skills and experience. Keep it under 250 words. Professional and enthusiastic tone.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a cover letter for this application:\\n\\nApplicant: {{ $('\u2699\ufe0f Config').first().json.fullName }}\\nLinkedIn: {{ $('\u2699\ufe0f Config').first().json.linkedInProfileUrl }}\\n\\nJob: {{ $('\ud83d\udd0d Parse Full Description').first().json.position }}\\nCompany: {{ $('\ud83d\udd0d Parse Full Description').first().json.company }}\\nLocation: {{ $('\ud83d\udd0d Parse Full Description').first().json.location }}\\n\\nJob Summary: {{ $('\ud83d\udcdd Parse Extracted Skills').first().json.job_summary }}\\n\\nMy Skill Match Score: {{ $('\ud83d\udd0d Find Skill Gaps').first().json.skill_match_score }}%\\n\\nWrite a professional cover letter that is specific to this role and company.\"\n    }\n  ],\n  \"temperature\": 0.6,\n  \"max_tokens\": 600\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1ebf0045-dc57-435d-9288-7ae30966fbd6",
+      "name": "\u270d\ufe0f OpenAI: Generate Cover Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all data for application\nconst jobData = $('\ud83d\udd00 Merge Resume Paths').first().json;\nconst coverLetterResponse = $input.first().json;\nconst coverLetter = coverLetterResponse.choices[0].message.content;\n\n// Use the apply_type from the fetched job page (more accurate than search result)\nconst isEasyApply = (jobData.apply_type || '').includes('Easy Apply');\n\nreturn [{\n  json: {\n    ...jobData,\n    cover_letter: coverLetter,\n    is_easy_apply: isEasyApply,\n    ready_to_apply: true,\n    application_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a785ef3c-cd18-4337-b187-b5b1977ebab6",
+      "name": "\ud83d\udccb Prepare Application Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-easy",
+              "leftValue": "={{ $json.is_easy_apply }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8a1ca105-1fa3-47d4-a268-9ad32e088ad7",
+      "name": "\u2753 LinkedIn Easy Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        2880,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/curious_coder~linkedin-easy-apply-bot/runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('\u2699\ufe0f Config').first().json.apifyApiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"jobUrl\": \"{{ $json.job_url }}\",\n  \"coverLetter\": \"{{ $json.cover_letter.replace(/\\\"/g, '\\\\\\\"').replace(/\\n/g, '\\\\n') }}\",\n  \"phone\": \"{{ $('\u2699\ufe0f Config').first().json.phoneNumber }}\",\n  \"followUpQuestions\": \"auto\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "cfa4d495-6c8e-4a18-9071-f94e4639a5a5",
+      "name": "\ud83d\ude80 Apify: LinkedIn Easy Apply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set status for successfully submitted Easy Apply\nconst job = $('\ud83d\udccb Prepare Application Data').first().json;\nconst apifyResult = $input.first().json;\n\nreturn [{\n  json: {\n    ...job,\n    new_status: 'Applied',\n    application_id: apifyResult.id || apifyResult.data?.id || 'auto_applied',\n    applied_date: new Date().toISOString().split('T')[0],\n    notes: `Easy Apply submitted via Apify. Cover letter generated. Skill match: ${job.skill_match_score}%`,\n    cover_letter_generated: 'Yes',\n    resume_optimized: job.resume_was_updated ? 'Yes' : 'No'\n  }\n}];"
+      },
+      "id": "64b57d45-321a-4a21-9ee0-f2d3ba3df12a",
+      "name": "\u2705 Set Status: Applied",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set status for jobs requiring manual/direct application\nconst job = $('\ud83d\udccb Prepare Application Data').first().json;\n\nreturn [{\n  json: {\n    ...job,\n    new_status: 'Manual Apply Required',\n    application_id: '',\n    applied_date: '',\n    notes: `External apply needed. Cover letter ready. Apply at: ${job.job_url}. Skill match: ${job.skill_match_score}%. Missing skills: ${job.missing_skills}`,\n    cover_letter_generated: 'Yes',\n    resume_optimized: job.resume_was_updated ? 'Yes' : 'No'\n  }\n}];"
+      },
+      "id": "ae467ea8-1b06-4ddb-8eae-6ed65357cbad",
+      "name": "\ud83d\udcdd Set Status: Manual Apply Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "7eba052d-8471-45c0-8c0f-656f808abf9b",
+      "name": "\ud83d\udd00 Merge Apply Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3600,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('\u2699\ufe0f Config').first().json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ $json.job_id }}",
+            "status": "={{ $json.new_status }}",
+            "applied_date": "={{ $json.applied_date }}",
+            "application_id": "={{ $json.application_id }}",
+            "cover_letter": "={{ $json.cover_letter }}",
+            "skill_match_score": "={{ $json.skill_match_score }}",
+            "missing_skills": "={{ $json.missing_skills }}",
+            "resume_optimized": "={{ $json.resume_optimized }}",
+            "notes": "={{ $json.notes }}",
+            "last_checked": "={{ new Date().toISOString().split('T')[0] }}"
+          },
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "applied_date",
+              "displayName": "applied_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "application_id",
+              "displayName": "application_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "cover_letter",
+              "displayName": "cover_letter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "skill_match_score",
+              "displayName": "skill_match_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "missing_skills",
+              "displayName": "missing_skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "resume_optimized",
+              "displayName": "resume_optimized",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_checked",
+              "displayName": "last_checked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c2820903-7a56-475d-abfc-e53d9893168f",
+      "name": "\ud83d\udcca Update Job Status in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3840,
+        448
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "unit": "minutes"
+      },
+      "id": "ce9ed875-a923-43c8-a7f0-1b983f4ca846",
+      "name": "\u23f1\ufe0f Wait 5 Min (Rate Limiting)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4080,
+        448
+      ],
+      "webhookId": "wait-webhook"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('\u2699\ufe0f Config').first().json.yourEmail }}",
+        "subject": "=\ud83d\udce8 Job Application Update: {{ $json.position }} at {{ $json.company }}",
+        "message": "=<h2>Application Update</h2>\n<table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse\">\n  <tr><td><strong>Company</strong></td><td>{{ $json.company }}</td></tr>\n  <tr><td><strong>Position</strong></td><td>{{ $json.position }}</td></tr>\n  <tr><td><strong>Location</strong></td><td>{{ $json.location }}</td></tr>\n  <tr><td><strong>Status</strong></td><td>{{ $json.new_status }}</td></tr>\n  <tr><td><strong>Apply Type</strong></td><td>{{ $json.apply_type }}</td></tr>\n  <tr><td><strong>Job URL</strong></td><td><a href=\"{{ $json.job_url }}\">View Job</a></td></tr>\n  <tr><td><strong>Skill Match</strong></td><td>{{ $json.skill_match_score }}%</td></tr>\n  <tr><td><strong>Resume Optimized</strong></td><td>{{ $json.resume_optimized }}</td></tr>\n  <tr><td><strong>Missing Skills Added</strong></td><td>{{ $json.missing_skills || 'None' }}</td></tr>\n</table>\n\n<h3>Generated Cover Letter:</h3>\n<div style=\"background:#f5f5f5;padding:16px;border-radius:4px\">{{ $json.cover_letter }}</div>\n\n{{ $json.new_status === 'Manual Apply Required' ? '<p style=\"color:red\"><strong>\u26a0\ufe0f ACTION REQUIRED: Please apply manually at the job URL above using the cover letter provided.</strong></p>' : '<p style=\"color:green\"><strong>\u2705 Application submitted automatically via LinkedIn Easy Apply.</strong></p>' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "d30a21e0-6a67-4dfc-8398-d70e4faeb6bf",
+      "name": "\ud83d\udce7 Email: Application Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4320,
+        448
+      ],
+      "webhookId": "f5d59a39-8811-4bf8-a741-70055169c98b"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 */2 * *"
+            }
+          ]
+        }
+      },
+      "id": "cf2c59f3-7c54-49e9-bd2d-b30249b5fbcf",
+      "name": "\u23f0 Status Check: Every 2 Days",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "options": {}
+      },
+      "id": "2b9e1b39-905e-4768-a609-eb7b5a7fe949",
+      "name": "\ud83d\udcca Get Applied Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -480,
+        880
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate a status report of all applied jobs\nconst jobs = $input.all();\n\nconst byStatus = {};\nfor (const item of jobs) {\n  const status = item.json.status || 'Unknown';\n  if (!byStatus[status]) byStatus[status] = [];\n  byStatus[status].push(item.json);\n}\n\nconst totalApplied = jobs.length;\nconst needsFollowUp = jobs.filter(j => {\n  const appliedDate = new Date(j.json.applied_date || 0);\n  const daysSince = (Date.now() - appliedDate.getTime()) / (1000 * 60 * 60 * 24);\n  return daysSince >= 7 && j.json.status === 'Applied';\n});\n\nreturn [{\n  json: {\n    total_applied: totalApplied,\n    needs_followup_count: needsFollowUp.length,\n    needs_followup: needsFollowUp.map(j => j.json),\n    all_jobs: jobs.map(j => j.json),\n    report_date: new Date().toISOString().split('T')[0],\n    summary_by_status: byStatus\n  }\n}];"
+      },
+      "id": "06f18636-e5d0-434b-9fb4-a740a2fcc55e",
+      "name": "\ud83d\udcca Build Status Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "=agarwal.anmol2004@gmail.com",
+        "subject": "\ud83d\udcca Job Application Status Report - {{ $json.report_date }}",
+        "message": "=<h2>Job Application Status Report</h2>\n<p><strong>Date:</strong> {{ $json.report_date }}</p>\n<p><strong>Total Applications Sent:</strong> {{ $json.total_applied }}</p>\n{{ $json.needs_followup_count > 0 ? `<p style=\"color:orange\"><strong>\u26a0\ufe0f ${$json.needs_followup_count} jobs need follow-up (applied 7+ days ago with no response)</strong></p>` : '' }}\n\n<h3>All Applied Jobs:</h3>\n<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;width:100%\">\n<tr style=\"background:#4CAF50;color:white\">\n  <th>Company</th><th>Position</th><th>Applied Date</th><th>Status</th><th>Match %</th>\n</tr>\n{{ $json.all_jobs.map(j => `<tr><td>${j.company}</td><td>${j.position}</td><td>${j.applied_date || 'N/A'}</td><td>${j.status}</td><td>${j.skill_match_score || 'N/A'}%</td></tr>`).join('') }}\n</table>\n\n{{ $json.needs_followup_count > 0 ? `<h3>Follow-up Required:</h3><ul>${$json.needs_followup.map(j => `<li><strong>${j.company}</strong> - ${j.position} (Applied: ${j.applied_date}) - <a href=\"${j.job_url}\">Job Link</a></li>`).join('')}</ul>` : '<p>\u2705 No follow-ups needed at this time.</p>' }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "020a2ca2-292f-4f56-974d-10ee97fa9072",
+      "name": "\ud83d\udce7 Email: Status Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        880
+      ],
+      "webhookId": "a490ed4a-262b-49d9-bef3-915b5a37474b",
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "\u23f0 Scraper: Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "\u2699\ufe0f Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcdd Split Search Queries": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0d LinkedIn Guest API - Search Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0d LinkedIn Guest API - Search Jobs": {
+      "main": [
+        [
+          {
+            "node": "\u23f3 Wait 3s Between Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f3 Wait 3s Between Queries": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Get Existing Job IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Existing Job IDs": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0e Filter New Jobs Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0e Filter New Jobs Only": {
+      "main": [
+        [
+          {
+            "node": "\u2753 New Jobs Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 New Jobs Found?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcbe Save New Jobs to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "\ud83d\udeab No New Jobs (Skip)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcbe Save New Jobs to Sheet": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce7 Email: New Jobs Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f0 Apply Trigger: 9 AM Weekdays": {
+      "main": [
+        [
+          {
+            "node": "\u2699\ufe0f Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Jobs to Apply": {
+      "main": [
+        [
+          {
+            "node": "\u2753 Jobs Available to Apply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 Jobs Available to Apply?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce6 Process One Job at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce6 Process One Job at a Time": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcc4 Fetch Full Job Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcc4 Fetch Full Job Description": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0d Parse Full Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0d Parse Full Description": {
+      "main": [
+        [
+          {
+            "node": "\ud83e\udd16 OpenAI: Extract Skills from JD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\udd16 OpenAI: Extract Skills from JD": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcdd Parse Extracted Skills",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcdd Parse Extracted Skills": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Get My Skills Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get My Skills Sheet": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0d Find Skill Gaps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0d Find Skill Gaps": {
+      "main": [
+        [
+          {
+            "node": "\u2753 Resume Update Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 Resume Update Needed?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcc4 Get Resume from Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "\u2705 Resume Already Optimized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcc4 Get Resume from Google Docs": {
+      "main": [
+        [
+          {
+            "node": "\u270f\ufe0f OpenAI: Optimize Resume for ATS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u270f\ufe0f OpenAI: Optimize Resume for ATS": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcdd Parse Optimized Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcdd Parse Optimized Resume": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd00 Merge Resume Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2705 Resume Already Optimized": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd00 Merge Resume Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd00 Merge Resume Paths": {
+      "main": [
+        [
+          {
+            "node": "\u270d\ufe0f OpenAI: Generate Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u270d\ufe0f OpenAI: Generate Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udccb Prepare Application Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Prepare Application Data": {
+      "main": [
+        [
+          {
+            "node": "\u2753 LinkedIn Easy Apply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 LinkedIn Easy Apply?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\ude80 Apify: LinkedIn Easy Apply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "\ud83d\udcdd Set Status: Manual Apply Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\ude80 Apify: LinkedIn Easy Apply": {
+      "main": [
+        [
+          {
+            "node": "\u2705 Set Status: Applied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2705 Set Status: Applied": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd00 Merge Apply Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcdd Set Status: Manual Apply Needed": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd00 Merge Apply Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd00 Merge Apply Paths": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Update Job Status in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Update Job Status in Sheet": {
+      "main": [
+        [
+          {
+            "node": "\u23f1\ufe0f Wait 5 Min (Rate Limiting)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f1\ufe0f Wait 5 Min (Rate Limiting)": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce7 Email: Application Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce7 Email: Application Confirmation": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce6 Process One Job at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f0 Status Check: Every 2 Days": {
+      "main": [
+        [
+          {
+            "node": "\u2699\ufe0f Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Applied Jobs": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Build Status Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Build Status Report": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce7 Email: Status Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2699\ufe0f Config": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcdd Split Search Queries",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "\ud83d\udcca Get Jobs to Apply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "\ud83d\udcca Get Applied Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "timezone": "Europe/Berlin",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null
+}

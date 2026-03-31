@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+
+  # ── LinkedIn Proxy ──────────────────────────────────────────────────────────
+  # Bypasses LinkedIn's TLS fingerprint blocking by using the host's curl.
+  # n8n calls http://linkedin-proxy:9877/fetch?url=<encoded_linkedin_url>
+  linkedin-proxy:
+    build: ./proxy
+    container_name: linkedin-proxy
+    restart: unless-stopped
+    networks:
+      - n8n-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9877/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── n8n ────────────────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      linkedin-proxy:
+        condition: service_healthy
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-changeme}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Berlin}
+      - N8N_LOG_LEVEL=info
+      - N8N_RELEASE_TYPE=stable
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - n8n-net
+
+networks:
+  n8n-net:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local
