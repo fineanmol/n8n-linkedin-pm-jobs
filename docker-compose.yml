@@ -39,14 +39,10 @@ services:
       - N8N_LOG_LEVEL=info
       - N8N_RELEASE_TYPE=stable
     volumes:
-      - n8n_data:/home/node/.n8n
+      - ~/.n8n:/home/node/.n8n
     networks:
       - n8n-net
 
 networks:
   n8n-net:
     driver: bridge
-
-volumes:
-  n8n_data:
-    driver: local

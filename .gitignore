@@ -1,5 +1,6 @@
 # Secrets — never commit
 .env
+workflow-backup-*.json
 
 # n8n local data (DB, credentials, etc.)
 .n8n/
