@@ -14,7 +14,7 @@
             {
               "id": "c1",
               "name": "searchQueries",
-              "value": "Product Manager,Product Owner,Junior Product Manager,Associate Product Manager,Technical Product Manager,Head of Product",
+              "value": "Product Manager,Product Owner,Product Lead,Head of Product,Director of Product,Product Analyst,Product Designer,Product Marketing Manager,Product Operations,Growth Product Manager",
               "type": "string"
             },
             {
@@ -44,13 +44,13 @@
             {
               "id": "c6",
               "name": "openAiApiKey",
-              "value": "YOUR_OPENAI_API_KEY_HERE",
+              "value": "YOUR_OPENAIAPIKEY_HERE",
               "type": "string"
             },
             {
               "id": "c7",
               "name": "apifyApiKey",
-              "value": "YOUR_APIFY_API_KEY_HERE",
+              "value": "YOUR_APIFYAPIKEY_HERE",
               "type": "string"
             },
             {
@@ -80,13 +80,13 @@
             {
               "id": "c11",
               "name": "jobsPerQuery",
-              "value": "50",
+              "value": 50,
               "type": "number"
             },
             {
               "id": "c12",
               "name": "maxApplyPerRun",
-              "value": "5",
+              "value": 5,
               "type": "number"
             },
             {
@@ -98,7 +98,7 @@
             {
               "id": "cfg-pmkeywords",
               "name": "pmKeywords",
-              "value": "product manager,product owner,product management,head of product,director of product,vp of product,vp product,chief product,product lead,product strategy,associate product,junior product,senior product,technical product,principal product,group product,product marketing manager,product operations",
+              "value": "product manager,product owner,product management,head of product,director of product,vp of product,vp product,chief product,chief product officer,cpo,product lead,product strategy,product vision,associate product,junior product,senior product,staff product,principal product,group product,lead product,technical product,growth product,data product,platform product,consumer product,enterprise product,b2b product,b2c product,mobile product,api product,ai product,product analyst,product designer,product researcher,product marketing,product operations,product enablement,product evangelist,product strategist,product owner,scrum product,agile product,product",
               "type": "string"
             }
           ]
@@ -639,7 +639,8 @@
           "id": "RKcWSPnewScjSSjm",
           "name": "Google Sheets account 2"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {
@@ -671,7 +672,8 @@
       "position": [
         -240,
         480
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -684,7 +686,8 @@
       "position": [
         0,
         448
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -727,6 +730,7 @@
         240,
         448
       ],
+      "disabled": true,
       "notes": "Fetches the full job posting from LinkedIn's guest API — free, no key needed. Used to get description for ATS analysis."
     },
     {
@@ -738,9 +742,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
-        448
-      ]
+        416,
+        672
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -771,9 +776,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        768,
-        704
-      ]
+        784,
+        560
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -1311,7 +1317,8 @@
           "id": "RKcWSPnewScjSSjm",
           "name": "Google Sheets account 2"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {
@@ -1324,7 +1331,8 @@
       "position": [
         -240,
         880
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -1349,7 +1357,8 @@
           "id": "EC4uxwYYw6cYxa7N",
           "name": "Gmail account"
         }
-      }
+      },
+      "disabled": true
     }
   ],
   "connections": {
@@ -1804,17 +1813,5 @@
     "timeSavedMode": "fixed",
     "timezone": "Europe/Berlin",
     "callerPolicy": "workflowsFromSameOwner"
-  },
-  "staticData": {
-    "node:⏰ Scraper: Every 6 Hours": {
-      "recurrenceRules": []
-    },
-    "node:⏰ Apply Trigger: 9 AM Weekdays": {
-      "recurrenceRules": []
-    },
-    "node:⏰ Status Check: Every 2 Days": {
-      "recurrenceRules": []
-    }
-  },
-  "pinData": {}
+  }
 }
