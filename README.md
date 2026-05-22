@@ -65,19 +65,19 @@ Go to **Settings → Credentials** and add:
 
 Open the workflow → click `⚙️ Config` → fill in:
 
-| Field | Description |
-|---|---|
-| `proxyUrl` | `http://linkedin-proxy:9877/fetch` (leave as-is) |
-| `searchQueries` | `Product Manager,Product Owner,Head of Product` |
-| `searchLocation` | `Germany` |
-| `pmKeywords` | Role filter (comma-separated keywords) |
-| `englishOnly` | `true` to skip German job postings |
-| `spreadsheetId` | Google Sheet ID from its URL |
-| `yourEmail` | Where digest emails are sent |
-| `openAiApiKey` | For AI resume optimisation (optional) |
-| `apifyApiKey` | For LinkedIn Easy Apply bot (optional) |
-| `resumeDocId` | Google Docs ID of your resume |
-| `fullName` | Your full name |
+| Field            | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `proxyUrl`       | `http://linkedin-proxy:9877/fetch` (leave as-is) |
+| `searchQueries`  | `Product Manager,Product Owner                   |
+| `searchLocation` | `Germany`                                        |
+| `pmKeywords`     | Role filter (comma-separated keywords)           |
+| `englishOnly`    | `true` to skip German job postings               |
+| `spreadsheetId`  | Google Sheet ID from its URL                     |
+| `yourEmail`      | Where digest emails are sent                     |
+| `openAiApiKey`   | For AI resume optimisation (optional)            |
+| `apifyApiKey`    | For LinkedIn Easy Apply bot (optional)           |
+| `resumeDocId`    | Google Docs ID of your resume                    |
+| `fullName`       | Your full name                                   |
 
 ### 6. Activate & run
 
@@ -102,6 +102,7 @@ Or click **Execute Workflow** to run manually.
 ### 2. Open port 5678 in Oracle's firewall
 
 **Console → Networking → Virtual Cloud Networks → your VCN → Security Lists → Default → Add Ingress Rule:**
+
 - Source: `0.0.0.0/0`
 - Protocol: `TCP`
 - Destination Port: `5678`
@@ -119,6 +120,7 @@ bash scripts/setup.sh
 ```
 
 `setup.sh` automatically:
+
 - Installs Docker + Docker Compose (no sudo issues)
 - Generates a random password
 - Builds and starts both containers
@@ -126,6 +128,7 @@ bash scripts/setup.sh
 - Prints the URL, username and password
 
 ### 4. Access n8n
+
 `http://<your-oracle-vm-ip>:5678`
 
 ---
@@ -179,12 +182,12 @@ To disable English filter: open Config node → `englishOnly` → set to `false`
 
 ## Free Hosting Options
 
-| Platform | Free Tier | Notes |
-|---|---|---|
-| **Oracle Cloud** | Always free (ARM VM, 24GB RAM) | Best option — no expiry |
-| **Your Mac/PC** | Free while machine is on | Already working |
-| Railway.app | 500 hrs/month | Sleeps when idle |
-| Render.com | 750 hrs/month | Sleeps after 15 min inactivity |
+| Platform         | Free Tier                      | Notes                          |
+| ---------------- | ------------------------------ | ------------------------------ |
+| **Oracle Cloud** | Always free (ARM VM, 24GB RAM) | Best option — no expiry        |
+| **Your Mac/PC**  | Free while machine is on       | Already working                |
+| Railway.app      | 500 hrs/month                  | Sleeps when idle               |
+| Render.com       | 750 hrs/month                  | Sleeps after 15 min inactivity |
 
 > **Note**: Cloud datacenter IPs may occasionally be rate-limited by LinkedIn.  
 > The proxy helps, but residential IPs (your Mac) are the most reliable.
