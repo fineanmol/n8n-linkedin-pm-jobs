@@ -32,10 +32,16 @@ if ! docker info &>/dev/null; then
   echo " ✅"
 fi
 
-# ── 2. Start containers via docker compose ───────────────────────────────────
+# ── 2. Fix SQLite permissions (Docker container runs as uid 1000, not your user) ─
+chmod 666 ~/.n8n/database.sqlite ~/.n8n/database.sqlite-wal 2>/dev/null || true
+chmod 775 ~/.n8n 2>/dev/null || true
+
+# ── 3. Create or start containers ────────────────────────────────────────────
+# Use 'up -d' (not 'start'): 'start' only works if containers already exist.
+# After 'docker compose down', you must run 'up -d' again.
 echo ""
 echo "🚀 Starting services..."
-docker compose up -d --build 2>&1 | grep -E "^( Container| Network| Volume|Error)" || true
+docker compose up -d --build 2>&1 | grep -E "^( Container| Network| Volume|Error|Creating|Starting|Started|Running|Healthy|Built)" || true
 
 # ── 3. Wait for n8n to be ready ──────────────────────────────────────────────
 echo ""
@@ -67,5 +73,5 @@ docker ps --format "    {{.Names}}  {{.Status}}" | grep -E "n8n|linkedin"
 echo "═══════════════════════════════════════════"
 echo ""
 echo "  📋 To view logs:     docker compose logs -f"
-echo "  🛑 To stop:          docker compose down"
+echo "  🛑 To stop all:      bash scripts/stop.sh"
 echo "  🔄 To restart n8n:   docker compose restart n8n"

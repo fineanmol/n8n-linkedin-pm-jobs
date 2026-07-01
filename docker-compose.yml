@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   # ── LinkedIn Proxy ──────────────────────────────────────────────────────────
@@ -36,6 +34,7 @@ services:
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Berlin}
+      - TZ=${GENERIC_TIMEZONE:-Europe/Berlin}
       - N8N_LOG_LEVEL=info
       - N8N_RELEASE_TYPE=stable
     volumes:
