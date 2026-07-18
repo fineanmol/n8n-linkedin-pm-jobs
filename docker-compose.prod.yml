@@ -1,0 +1,52 @@
+services:
+
+  # ── LinkedIn Proxy ────────────────────────────────────────────────────────
+  linkedin-proxy:
+    build: ./proxy
+    container_name: linkedin-proxy
+    restart: unless-stopped
+    networks:
+      - n8n-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9877/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── n8n ──────────────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      linkedin-proxy:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5678:5678"   # only localhost — Cloudflare Tunnel connects here
+    environment:
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://${N8N_HOST}/
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Berlin}
+      - TZ=${GENERIC_TIMEZONE:-Europe/Berlin}
+      - N8N_LOG_LEVEL=warn          # reduce log noise on small VM
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      # Cap Node.js heap to 450 MB — leaves ~550 MB for OS + proxy + Docker
+      - NODE_OPTIONS=--max-old-space-size=512
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - n8n-net
+
+volumes:
+  n8n_data:
+
+networks:
+  n8n-net:
+    driver: bridge

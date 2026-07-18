@@ -31,7 +31,14 @@ function setupJobsSheet(ss) {
     'status', 'priority', 'skill_match_score', 'missing_skills',
     'posted_date', 'applied_date', 'last_checked',
     'application_id', 'cover_letter_generated', 'resume_optimized',
-    'job_summary', 'notes', 'description'
+    'job_summary', 'notes', 'description',
+    // Years / seniority parsed from JD (e.g. "3+", "3-5", "Mid-Senior")
+    'experience_required',
+    // German CEFR from JD (None | B1 | B2 | C1 | C2 | Fluent | Native)
+    'german_required',
+
+    // Tailored Designer CV/CL used for each application (local path or Drive link)
+    'resume_used', 'cover_letter_used', 'resume_variant_id', 'ats_score'
   ];
   
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -229,4 +236,36 @@ function setupStatsSheet(ss) {
   sheet.getRange(4, 2, metrics.length - 1, 1).setHorizontalAlignment('center');
   
   Logger.log('Stats sheet created ✅');
+}
+
+/**
+ * Safe migration for an EXISTING Jobs sheet: append tracking columns if missing.
+ * Run: addApplicationDocColumns
+ */
+function addApplicationDocColumns() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Jobs') || ss.getSheets()[0];
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, Math.max(lastCol, 1)).getValues()[0];
+  const needed = [
+    'resume_used',
+    'cover_letter_used',
+    'resume_variant_id',
+    'ats_score',
+    'pack_folder',
+    'apply_channel',
+    'external_apply_url',
+  ];
+  const missing = needed.filter((h) => headers.indexOf(h) === -1);
+  if (!missing.length) {
+    SpreadsheetApp.getUi().alert('Columns already present: ' + needed.join(', '));
+    return;
+  }
+  const start = lastCol + 1;
+  sheet.getRange(1, start, 1, missing.length).setValues([missing]);
+  sheet.getRange(1, start, 1, missing.length)
+    .setBackground('#1a73e8')
+    .setFontColor('#ffffff')
+    .setFontWeight('bold');
+  SpreadsheetApp.getUi().alert('Added columns: ' + missing.join(', '));
 }

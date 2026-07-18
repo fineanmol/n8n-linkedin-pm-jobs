@@ -1,0 +1,30 @@
+{
+  "name": "n8n-workflow-for-automation",
+  "version": "1.0.0",
+  "description": "Automatically scrapes LinkedIn for **English-language Product Manager jobs in Germany**, deduplicates them, saves to Google Sheets, and sends a daily digest email.   Runs 100% free on your own machine or any free cloud VM.",
+  "main": "google-sheets-setup.js",
+  "scripts": {
+    "generate-application": "node scripts/generate-application.mjs",
+    "compose-pack-http": "node scripts/compose-pack-http.mjs",
+    "upload-docs": "node scripts/upload-application-docs.mjs",
+    "backfill-r2": "node scripts/backfill-r2-docs.mjs",
+    "backfill-experience": "node scripts/backfill-experience-required.mjs",
+    "backfill-german": "node scripts/backfill-german-required.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fineanmol/n8n-linkedin-pm-jobs.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/fineanmol/n8n-linkedin-pm-jobs/issues"
+  },
+  "homepage": "https://github.com/fineanmol/n8n-linkedin-pm-jobs#readme",
+  "devDependencies": {
+    "wrangler": "^4.111.0"
+  }
+}

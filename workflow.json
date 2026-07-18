@@ -50,7 +50,7 @@
             {
               "id": "c7",
               "name": "apifyApiKey",
-              "value": "YOUR_APIFYAPIKEY_HERE",
+              "value": "YOUR_APIFY_API_KEY_HERE",
               "type": "string"
             },
             {
@@ -155,7 +155,7 @@
           "parameters": [
             {
               "name": "url",
-              "value": "=https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={{ encodeURIComponent($json.currentQuery) }}&location={{ encodeURIComponent($json.searchLocation) }}&start={{ $json.pageStart || 0 }}&count=25&sortBy=DD&f_TPR=r604800"
+              "value": "=https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={{ encodeURIComponent($json.currentQuery) }}&location={{ encodeURIComponent($json.searchLocation) }}&start={{ $json.pageStart || 0 }}&count=25&sortBy=DD&f_TPR=r604800&f_E=2%2C3%2C4"
             }
           ]
         },
@@ -1576,6 +1576,675 @@
         -1232,
         928
       ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "c3436cd4-e0d5-4da8-9302-a9ec6412bf77",
+      "name": "\u23f0 Apify Scraper: Every 12h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1216,
+        -320
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "6b29adfc-bcb4-4ccc-b590-729b100e114f",
+      "name": "\ud83d\udd04 Run Apify Scraper Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1216,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Build Apify LinkedIn Job Scraper input from Config\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst queries = String(cfg.searchQueries || 'Product Manager')\n  .split(',').map(q => q.trim()).filter(Boolean);\nconst experienceLevel = String(cfg.apifyExperienceLevels || 'entry-level,associate,mid-senior').split(',').map(s => s.trim()).filter(Boolean);\nreturn [{\n  json: {\n    keyword:    queries,\n    locations:  [String(cfg.searchLocation || 'Germany')],\n    publishedAt:'r604800',\n    jobType:    ['full-time'],\n    maxItems:   200,\n    saveOnlyUniqueItems: true,\n    experienceLevel\n  }\n}];\n"
+      },
+      "id": "0c53fb22-e8c4-4572-8243-93b894f525b8",
+      "name": "\ud83d\udccb Build Apify Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('⚙️ Config').first().json.apifyApiKey }}&waitForFinish=90",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json) }}"
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "0c0146c6-e31c-4d3d-b0fe-acd4eb625ed6",
+      "name": "\ud83e\udd16 Run Apify LinkedIn Scraper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('⚙️ Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,sector,applyType,experienceLevel,description",
+        "options": {}
+      },
+      "id": "39c37a47-ba2d-431b-b107-5da27a146c4c",
+      "name": "\ud83d\udce5 Fetch Apify Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Transform Apify cheap_scraper/linkedin-job-scraper output\n// to same shape as '\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data'\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\n\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title || '').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(title) {\n  const t = (title||'').toLowerCase();\n  return EXCLUDED_KW.some(kw => t.includes(kw));\n}\nfunction matchesRole(title) {\n  if (ROLE_TERMS.length === 0) return true;\n  const t = (title||'').toLowerCase();\n  return ROLE_TERMS.some(term => t.includes(term));\n}\n\nconst raw = $input.all();\nconst jobs = [];\nfor (const item of raw) {\n  const j = item.json;\n  const title = j.jobTitle || '';\n  if (!isEnglish(title)) continue;\n  if (isExcluded(title)) continue;\n  if (!matchesRole(title)) continue;\n  const jobId = String(j.jobId || '').trim();\n  if (!jobId) continue;\n  jobs.push({\n    json: {\n      job_id:     'li_' + jobId,\n      company:    j.companyName || 'Unknown',\n      position:   title,\n      location:   j.location || 'Unknown',\n      job_url:    j.jobUrl || ('https://www.linkedin.com/jobs/view/' + jobId + '/'),\n      apply_type: j.applyType === 'EASY' ? 'LinkedIn Easy Apply' : 'LinkedIn External',\n      is_linkedin: 'Yes',\n      is_remote:   (j.workType||'').toLowerCase().includes('remote') ? 'Yes' : 'No',\n      employment_type: 'FULLTIME',\n      posted_date:     j.publishedAt ? j.publishedAt.split('T')[0] : new Date().toISOString().split('T')[0],\n      description:     '',\n      status:          'Not Applied',\n      priority:        'Medium',\n      applied_date:    '',\n      cover_letter_generated: 'No',\n      resume_optimized:       'No',\n      missing_skills:  '',\n      application_id:  '',\n      notes:           j.applicationsCount || '',\n      fetched_date:    new Date().toISOString().split('T')[0],\n      last_checked:    new Date().toISOString().split('T')[0],\n      hasNewJobs:      false,\n      _source:         'apify'\n    }\n  });\n}\nconsole.log(`Apify: ${raw.length} raw \u2192 ${jobs.length} after filters`);\nreturn jobs.length > 0 ? jobs : [{ json: { job_id: '', _empty: true, _source: 'apify' } }];\n"
+      },
+      "id": "eb8d38d5-8267-4bf4-a2d8-807bc14cf5ab",
+      "name": "\ud83d\udccb Parse Apify Jobs \u2192 Job Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "c23cfd2d-30dd-4c9b-955f-5dfb7a02f43c",
+      "name": "\u23f0 Expire Check: Every 2 Days",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Not Applied"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03af79d0-18a6-4c7e-8833-591e24179587",
+      "name": "\ud83d\udcca Get Not-Applied Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1024,
+        640
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "5a61f0ea-231e-4560-9047-e0b4a4afb460",
+      "name": "\ud83d\udce6 Check Jobs in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -784,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('\u2699\ufe0f Config').first().json.proxyUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.job_url }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "id": "155d218b-6916-4d1f-b43b-d29059b66788",
+      "name": "\ud83d\udd0d HTTP: Check Job URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -544,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Check HTTP response for LinkedIn job page \u2192 detect expired listings\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || item.json || '').toLowerCase();\n  const jobId = item.json._jobId || '';\n  const rowNum = item.json._rowNum;\n  // LinkedIn shows these strings when a job is closed\n  const closedSignals = [\n    'no longer accepting applications',\n    'this job is no longer available',\n    'job listing is no longer active',\n    'posting has been removed',\n    'position has been filled',\n    'job is closed'\n  ];\n  const isClosed = closedSignals.some(s => body.includes(s));\n  if (isClosed && jobId) {\n    expired.push({\n      json: {\n        job_id:       jobId,\n        row_number:   rowNum,\n        status:       'Expired',\n        last_checked: new Date().toISOString().split('T')[0]\n      }\n    });\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nreturn expired.length > 0 ? expired : [{ json: { _noExpired: true } }];\n"
+      },
+      "id": "3642ead7-9c43-48b0-9fc1-169999227c56",
+      "name": "\ud83d\udcdd Detect Expired Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "8e7f69f3-f866-48e5-9f70-7c6158c42118",
+      "name": "\ud83d\udcca Mark Expired in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -64,
+        640
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "3a5bf0ad-9fbd-46c1-946c-277d3e75d760",
+      "name": "\u23f0 Apify Scraper: Every 12h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1216,
+        -550
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d455a449-1e81-4afb-9ba7-a97c1534e728",
+      "name": "\ud83d\udd04 Run Apify Scraper Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1216,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('⚙️ Config').first().json.apifyApiKey }}&waitForFinish=90",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ keyword: String($(\\\"\u2699\ufe0f Config\\\").first().json.searchQueries || \\\"Product Manager\\\").split(\",\").map(q=>q.trim()).filter(Boolean), locations: [String($(\\\"\u2699\ufe0f Config\\\").first().json.searchLocation || \\\"Germany\\\")], publishedAt: \\\"r604800\\\", jobType: [\\\"full-time\\\"], maxItems: 200, saveOnlyUniqueItems: true }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "7a89133e-9561-458b-b15e-95b96ac2f945",
+      "name": "\ud83e\udd16 Run Apify Scraper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -752,
+        -630
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('⚙️ Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,applyType,experienceLevel,description",
+        "options": {}
+      },
+      "id": "1bc57e8f-7a07-4a64-8f51-5c2cf6177e94",
+      "name": "\ud83d\udce5 Fetch Apify Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        -630
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst raw = $input.all();\nconst today = new Date().toISOString().split('T')[0];\nconst jobs = raw.map(item => {\n  const j = item.json;\n  const jobId = String(j.jobId || '').trim();\n  if (!jobId) return null;\n  return {\n    json: {\n      job_id:     'li_' + jobId,\n      company:    j.companyName || 'Unknown',\n      position:   j.jobTitle || '',\n      location:   j.location || 'Unknown',\n      job_url:    j.jobUrl || 'https://www.linkedin.com/jobs/view/' + jobId + '/',\n      apply_type: j.applyType === 'EASY' ? 'LinkedIn Easy Apply' : 'LinkedIn External',\n      is_linkedin:'Yes',\n      is_remote:  (j.workType||'').toLowerCase().includes('remote') ? 'Yes' : 'No',\n      employment_type: 'FULLTIME',\n      posted_date: j.publishedAt ? j.publishedAt.split('T')[0] : today,\n      description: '',\n      status:      'Not Applied',\n      priority:    'Medium',\n      applied_date:'',\n      cover_letter_generated: 'No',\n      resume_optimized: 'No',\n      missing_skills: '',\n      application_id: '',\n      notes:       j.applicationsCount || '',\n      fetched_date: today,\n      last_checked: today,\n      experience_required: String(j.experienceLevel || j.seniorityLevel || j.experience || '').trim(),\n      hasNewJobs:  false,\n      _empty:      false\n    }\n  };\n}).filter(Boolean);\nconsole.log(`Apify parse: ${raw.length} raw \u2192 ${jobs.length} parsed`);\nreturn jobs.length > 0 ? jobs : [{ json: { job_id:'', _empty: true } }];\n"
+      },
+      "id": "a56a77fd-d1b3-4c1f-a0c6-697695c4135b",
+      "name": "\ud83d\udccb Parse Apify Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        -630
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "id": "1d58021f-4fc6-482c-99a9-31057788f7f7",
+      "name": "\ud83d\udcca Get Existing IDs [Apify]",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        -630
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst incomingJobs = $('\ud83d\udccb Parse Apify Jobs').all();\nconst sheetRows    = $('\ud83d\udcca Get Existing IDs [Apify]').all();\nconst cfg = $('\u2699\ufe0f Config').first().json;\n\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title||'').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title||'')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(t) { const s=(t||'').toLowerCase(); return EXCLUDED_KW.some(k=>s.includes(k)); }\nfunction matchesRole(t) { if(!ROLE_TERMS.length) return true; const s=(t||'').toLowerCase(); return ROLE_TERMS.some(k=>s.includes(k)); }\nfunction normaliseKey(c,t) {\n  const clean = s => (s||'').toLowerCase().replace(/\\(.*?\\)/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();\n  return `${clean(c)}|${clean(t)}`;\n}\n\nconst existingIds  = new Set(sheetRows.map(r => String(r.json.job_id||'').trim()).filter(Boolean));\nconst existingKeys = new Set(sheetRows.map(r => normaliseKey(r.json.company||'', r.json.position||r.json.title||'')).filter(s=>s.length>5));\n\nconst seenInRun = new Set();\nlet langSkip=0, exclSkip=0, roleSkip=0, dupSkip=0;\n\nconst newJobs = incomingJobs.filter(item => {\n  const j = item.json;\n  if (j._empty) return false;\n  const title = j.position || '';\n  if (!isEnglish(title))   { langSkip++;  return false; }\n  if (isExcluded(title))   { exclSkip++;  return false; }\n  if (!matchesRole(title)) { roleSkip++;  return false; }\n  const jobId = String(j.job_id||'').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  if (existingIds.has(jobId)) { dupSkip++; return false; }\n  const key = normaliseKey(j.company||'', title);\n  if (existingKeys.has(key)) { dupSkip++; return false; }\n  return true;\n});\n\nconsole.log(`Apify filter: ${incomingJobs.length} \u2192 lang:${langSkip} excl:${exclSkip} role:${roleSkip} dup:${dupSkip} \u2192 ${newJobs.length} new`);\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
+      },
+      "id": "cbb46f36-fca3-411b-8f23-766f794a2a4e",
+      "name": "\ud83d\udd0e Filter New Apify Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -630
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json._noNew }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "07241ee1-9e46-438f-abe0-cafdb8582e49",
+      "name": "\u2753 New Apify Jobs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -630
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Jobs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "c41f6c3a-eaae-44e2-b1db-d8c3a6687347",
+      "name": "\ud83d\udcbe Save Apify Jobs to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        720,
+        -720
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "c5880db8-f649-4403-b7be-1d47065a0717",
+      "name": "\ud83d\udeab No New Apify Jobs",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "bce81def-4a77-46fd-ba21-8598d293d1cf",
+      "name": "\u23f0 Expire Check: Every 2 Days",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1232,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Not Applied"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "34a34659-6464-4adf-9705-fb708d4058b8",
+      "name": "\ud83d\udcca Get Not-Applied Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1024,
+        640
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "cba1bba5-d726-4164-8e58-9aeb1b0a3920",
+      "name": "\ud83d\udce6 Jobs in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -784,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('\u2699\ufe0f Config').first().json.proxyUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ encodeURIComponent($json.job_url || '') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "b693fabc-2cd6-4986-bf19-1973b752d3af",
+      "name": "\ud83d\udd0d Check Job URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -544,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || '').toLowerCase();\n  const jobId   = String(item.json._jobId   || '').trim();\n  const rowNum  = item.json._rowNum;\n  if (!jobId) continue;\n  const closedSignals = [\n    'no longer accepting applications',\n    'job is no longer available',\n    'this listing has expired',\n    'position has been filled',\n    'job has been closed',\n    'posting has expired'\n  ];\n  if (closedSignals.some(s => body.includes(s))) {\n    expired.push({ json: {\n      job_id:       jobId,\n      row_number:   rowNum,\n      status:       'Expired',\n      last_checked: new Date().toISOString().split('T')[0]\n    }});\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nif (expired.length === 0) return [{ json: { _noExpired: true } }];\nreturn expired;\n"
+      },
+      "id": "fab5f548-0ec1-4c56-9456-30282a4558c5",
+      "name": "\ud83d\udcdd Detect Expired Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json._noExpired }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "5ff54295-377e-4134-95d2-69873e37a082",
+      "name": "\u2753 Any Expired?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177577709,
+          "mode": "list",
+          "cachedResultName": "Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "874ae871-d6ef-43b2-b282-bbfa91a65fc5",
+      "name": "\ud83d\udcca Mark Expired in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        176,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "RKcWSPnewScjSSjm",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "9791fcb2-36b1-4a58-ba47-105bcef94899",
+      "name": "\u2705 No Expired Jobs",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        176,
+        720
+      ]
     }
   ],
   "connections": {
@@ -2008,6 +2677,11 @@
             "node": "\ud83d\udcdd Split Search Queries",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "\ud83e\udd16 Run Apify Scraper",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -2090,6 +2764,218 @@
         [
           {
             "node": "\ud83d\udcca Read All Jobs (Status Sync)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f0 Apify Scraper: Every 12h": {
+      "main": [
+        [
+          {
+            "node": "\u2699\ufe0f Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd04 Run Apify Scraper Now": {
+      "main": [
+        [
+          {
+            "node": "\u2699\ufe0f Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Build Apify Input": {
+      "main": [
+        [
+          {
+            "node": "\ud83e\udd16 Run Apify LinkedIn Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\udd16 Run Apify LinkedIn Scraper": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce5 Fetch Apify Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce5 Fetch Apify Results": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udccb Parse Apify Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u23f0 Expire Check: Every 2 Days": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Get Not-Applied Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Not-Applied Jobs": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce6 Jobs in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce6 Check Jobs in Batches": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0d HTTP: Check Job URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0d HTTP: Check Job URL": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcdd Detect Expired Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcdd Detect Expired Jobs": {
+      "main": [
+        [
+          {
+            "node": "\u2753 Any Expired?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83e\udd16 Run Apify Scraper": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce5 Fetch Apify Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udccb Parse Apify Jobs": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Get Existing IDs [Apify]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Existing IDs [Apify]": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0e Filter New Apify Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0e Filter New Apify Jobs": {
+      "main": [
+        [
+          {
+            "node": "\u2753 New Apify Jobs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 New Apify Jobs?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcbe Save Apify Jobs to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "\ud83d\udeab No New Apify Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udce6 Jobs in Batches": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udd0d Check Job URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udd0d Check Job URL": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcdd Detect Expired Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\u2753 Any Expired?": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udcca Mark Expired in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "\u2705 No Expired Jobs",
             "type": "main",
             "index": 0
           }

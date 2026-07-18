@@ -14,8 +14,27 @@ workflow-backup-*.json
 __pycache__/
 *.pyc
 *.pyo
+.venv*/
+.venv-*/
+
+# Node (wrangler helper)
+node_modules/
+package-lock.json
+.wrangler/
+
+# Scratch / one-off edit dumps
+.tmp_*.js
+.tmp_*.json
 
 # Logs
 *.log
 /tmp/
 linkedin-automation-complete.json
+
+# Per-job tailored PDFs/JSON (keep master/ tracked)
+applications/jobs/
+applications/uploads/
+
+# Runtime queues / progress / JD temp (regenerable)
+applications/queues/
+applications/apply_queue*.json
