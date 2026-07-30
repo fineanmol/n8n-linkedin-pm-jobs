@@ -45,7 +45,7 @@ _EXPIRED_TEXT_SIGNALS = [
 
 
 def _detect_status(html_bytes: bytes, job_id: str) -> str:
-    """Returns 'Applied' | 'No Longer Available' | 'Unknown'."""
+    """Returns 'Applied' | 'Not Available Now' | 'Unknown'."""
     body = html_bytes.decode('utf-8', errors='ignore').lower()
     numeric_id = re.sub(r'\D', '', job_id or '')
 
@@ -64,13 +64,13 @@ def _detect_status(html_bytes: bytes, job_id: str) -> str:
             body, re.DOTALL,
         )
         if m2:
-            return 'No Longer Available'
+            return 'Not Available Now'
 
     # Fallback: plain-text expiry banners (used only if the structured field
     # above wasn't found, e.g. page layout changed)
     for sig in _EXPIRED_TEXT_SIGNALS:
         if sig in body:
-            return 'No Longer Available'
+            return 'Not Available Now'
 
     return 'Unknown'
 

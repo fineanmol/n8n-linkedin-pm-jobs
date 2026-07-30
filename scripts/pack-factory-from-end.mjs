@@ -20,6 +20,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkLinkedInJobOpen } from './check-job-open.mjs';
+import { evaluateExperience } from './experience-filter.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -173,13 +174,37 @@ function isAlreadyPacked(jobId) {
       const ats = Number(s.ats_score || 0);
       const st = (s.status || '').trim();
       if (ats >= 90 && (st === 'Ready to Apply' || st === 'Applied' || existsSync(path.join(dir, 'r2.json')))) {
-        return { ats, st };
+        return { ats, st, sheetFields: s, dir };
       }
     } catch {
       /* continue */
     }
   }
   return false;
+}
+
+/** Same spirit as scraper Config.excludedRoleKeywords — skip before compose. */
+function excludedTitleReason(title) {
+  const t = String(title || '').toLowerCase();
+  const kws = [
+    'intern',
+    'internship',
+    'werkstudent',
+    'praktikum',
+    'praktikant',
+    'working student',
+    'ausbildung',
+    'director of product',
+    'director product',
+    'vice president',
+    'vp product',
+    'head of product',
+    'chief product',
+  ];
+  for (const kw of kws) {
+    if (t.includes(kw)) return kw;
+  }
+  return null;
 }
 
 /** Latest result per job_id from pack_factory_progress.jsonl */
@@ -199,13 +224,41 @@ function loadTriedJobIds() {
   return tried;
 }
 
-async function processOne(job, tmpDir) {
+async function processOne(job, tmpDir, { force = false } = {}) {
   console.log(`\n▶ row ${job.sheet_row} | ${job.job_id} | ${job.company} | ${job.position.slice(0, 60)}`);
 
-  const packed = isAlreadyPacked(job.job_id);
+  const excluded = excludedTitleReason(job.position);
+  if (excluded) {
+    const reason = `excluded title keyword: ${excluded}`;
+    console.log(`  not qualified — ${reason}`);
+    await sheetPost({
+      job_id: job.job_id,
+      status: 'not qualified',
+      notes: `NOT QUALIFIED ${new Date().toISOString().slice(0, 10)} — ${reason} (pack factory)`,
+    });
+    logProgress({ ...job, result: 'NotQualified', notes: reason });
+    return { result: 'NotQualified' };
+  }
+
+  // Lead/Senior/Global kept here — YOE>=5 gated later from JD text
+
+  const packed = force ? false : isAlreadyPacked(job.job_id);
   if (packed) {
-    console.log(`  already packed (ats ${packed.ats}, ${packed.st || 'r2'}) — skip`);
-    logProgress({ ...job, result: 'AlreadyPacked', notes: `ats ${packed.ats}` });
+    // Keep sheet in sync — local pack exists but status may still be Not Applied
+    const sf = packed.sheetFields || {};
+    console.log(`  already packed (ats ${packed.ats}) — sync sheet Ready to Apply`);
+    await sheetPost({
+      job_id: job.job_id,
+      status: 'Ready to Apply',
+      resume_used: sf.resume_used || undefined,
+      cover_letter_used: sf.cover_letter_used || undefined,
+      ats_score: sf.ats_score || packed.ats,
+      notes: sf.notes || `Pack ready (ATS ${packed.ats}). Synced by pack factory.`,
+      pack_folder: sf.pack_folder || undefined,
+      resume_variant_id: sf.resume_variant_id || undefined,
+      form_answers: sf.form_answers || undefined,
+    });
+    logProgress({ ...job, result: 'AlreadyPacked', notes: `ats ${packed.ats}; sheet synced` });
     return { result: 'AlreadyPacked' };
   }
 
@@ -225,20 +278,40 @@ async function processOne(job, tmpDir) {
       logProgress({ ...job, result: 'Skipped', notes: reason });
       return { result: 'Skipped' };
     }
-    console.log(`  closed → Expired (${reason})`);
+    console.log(`  closed → Not Available Now (${reason})`);
     await sheetPost({
       job_id: job.job_id,
-      status: 'Expired',
-      notes: `EXPIRED ${new Date().toISOString().slice(0, 10)} — ${reason} (pack factory, no docs)`,
+      status: 'Not Available Now',
+      notes: `NOT AVAILABLE ${new Date().toISOString().slice(0, 10)} — ${reason} (pack factory, no docs)`,
     });
-    logProgress({ ...job, result: 'Expired', notes: reason });
-    return { result: 'Expired' };
+    logProgress({ ...job, result: 'Not Available Now', notes: reason });
+    return { result: 'Not Available Now' };
   }
 
   const jd =
     check.description && check.description.length > 80
       ? check.description
       : `${job.position} at ${job.company}. Product management role.`;
+
+  // Years + Lead/Global (title already gated; years from JD)
+  const exp = evaluateExperience({
+    description: jd,
+    title: job.position,
+    linkedInLevel: check.seniorityLevel || '',
+  });
+  if (exp.skip_for_experience) {
+    const reason = `requires ${exp.experience_required} (>=${exp.max_years}y)`;
+    console.log(`  not qualified — ${reason}`);
+    await sheetPost({
+      job_id: job.job_id,
+      status: 'not qualified',
+      notes: `NOT QUALIFIED ${new Date().toISOString().slice(0, 10)} — ${reason} (pack factory)`,
+      experience_required: exp.experience_required,
+    });
+    logProgress({ ...job, result: 'NotQualified', notes: reason });
+    return { result: 'NotQualified' };
+  }
+
   const jdFile = path.join(tmpDir, `${job.job_id}.jd.txt`);
   writeFileSync(jdFile, jd);
 
@@ -266,6 +339,8 @@ async function main() {
   const limit = Number(arg('limit') || 25);
   const concurrency = Math.max(1, Number(arg('concurrency') || 1));
   const startOffset = Number(arg('offset') || 0);
+  const fromRow = Number(arg('from-row') || 0);
+  const force = process.argv.includes('--force');
   const untriedOnly = process.argv.includes('--untried-only');
 
   if (!existsSync(csvPath)) {
@@ -278,10 +353,18 @@ async function main() {
   const pending = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    if ((r.status || '').trim() !== 'Not Applied') continue;
+    const sheetRow = i + 2;
+    const st = (r.status || '').trim();
+    // --force: re-compose Ready to Apply packs too (e.g. after bold/highlight fixes)
+    if (force) {
+      if (st !== 'Not Applied' && st !== 'Ready to Apply') continue;
+    } else if (st !== 'Not Applied') {
+      continue;
+    }
+    if (fromRow && sheetRow < fromRow) continue;
     if (untriedOnly && tried.has(r.job_id)) continue;
     pending.push({
-      sheet_row: i + 2,
+      sheet_row: sheetRow,
       job_id: r.job_id,
       company: decode(r.company),
       position: decode(r.position),
@@ -291,7 +374,7 @@ async function main() {
 
   const fromEnd = pending.slice().reverse().slice(startOffset, startOffset + limit);
   console.log(
-    `Pack factory: ${fromEnd.length} jobs from end of sheet (of ${pending.length} ${untriedOnly ? 'untried ' : ''}Not Applied). concurrency=${concurrency}`,
+    `Pack factory: ${fromEnd.length} jobs from end of sheet (of ${pending.length} ${untriedOnly ? 'untried ' : ''}Not Applied${fromRow ? `, row>=${fromRow}` : ''}${force ? ', force' : ''}). concurrency=${concurrency}`,
   );
   if (fromEnd.length) {
     console.log(
@@ -305,8 +388,9 @@ async function main() {
   const counts = {
     'Ready to Apply': 0,
     AlreadyPacked: 0,
-    Expired: 0,
+    'Not Available Now': 0,
     Skipped: 0,
+    NotQualified: 0,
     ComposeFailed: 0,
     CheckFailed: 0,
   };
@@ -317,7 +401,7 @@ async function main() {
       const my = idx++;
       const job = fromEnd[my];
       try {
-        const r = await processOne(job, tmpDir);
+        const r = await processOne(job, tmpDir, { force });
         counts[r.result] = (counts[r.result] || 0) + 1;
       } catch (e) {
         console.error(`  fatal ${job.job_id}:`, e.message);
@@ -333,7 +417,10 @@ async function main() {
   console.log(JSON.stringify(counts, null, 2));
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

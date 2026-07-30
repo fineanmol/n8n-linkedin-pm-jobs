@@ -70,7 +70,7 @@ async function main() {
             2,
           ),
         );
-        // Best-effort sheet mark Expired
+        // Best-effort sheet mark Not Available Now
         if (process.env.SKIP_SHEET_UPDATE !== '1') {
           try {
             await fetch(
@@ -84,8 +84,8 @@ async function main() {
                 },
                 body: JSON.stringify({
                   job_id: jobId,
-                  status: 'Expired',
-                  notes: `EXPIRED — ${check.reason} (no resume/CL generated)`,
+                  status: 'Not Available Now',
+                  notes: `NOT AVAILABLE — ${check.reason} (no resume/CL generated)`,
                 }),
               },
             );

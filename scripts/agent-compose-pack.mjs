@@ -18,6 +18,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { uploadApplicationDocs } from './upload-application-docs.mjs';
 import { buildFormAnswers, formAnswersToSheetString } from './form-answers.mjs';
+import {
+  loadTruthLexicon,
+  extractTruthSkillsFromJd,
+} from './truth-lexicon.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -98,36 +102,83 @@ function extractKeywords(jd) {
 function tailorResume(master, { company, role, jd }) {
   const resume = structuredClone(master);
   const kws = extractKeywords(jd);
+  // Pull truth-lexicon JD skills so tailor is JD-heavy before boost runs
+  const truthKws = extractTruthSkillsFromJd(
+    jd,
+    loadTruthLexicon({ masterResume: master }),
+  )
+    .map((t) => t.label)
+    .filter((l) => !/^(Product Manager|Product Owner|Product Lead)$/i.test(l));
+  const themes = [];
+  for (const t of [...truthKws, ...kws]) {
+    if (!themes.some((x) => x.toLowerCase() === t.toLowerCase())) themes.push(t);
+  }
   const roleLower = (role || '').toLowerCase();
+  const jdLower = String(jd || '').toLowerCase();
   let focus = 'Product Management';
-  if (roleLower.includes('owner')) focus = 'Product Ownership';
-  else if (roleLower.includes('marketing')) focus = 'Product Marketing';
+  if (roleLower.includes('owner') || /\bproduct owner\b/.test(jdLower)) {
+    focus = 'Product Ownership';
+  } else if (roleLower.includes('marketing')) focus = 'Product Marketing';
   else if (roleLower.includes('commercial')) focus = 'Commercialization & Portfolio';
+  else if (roleLower.includes('analyst')) focus = 'Product Analytics';
+  else if (roleLower.includes('growth')) focus = 'Growth Product';
+  else if (roleLower.includes('technical')) focus = 'Technical Product';
   else if (roleLower.includes('lead')) focus = 'Product Leadership';
 
-  resume.subtitle = noEmDash(
-    `Product Manager | ${focus} | Agile & Strategy`,
+  // Headline: Product Manager | {Ownership/…} | {JD ATS signal}
+  // Prefer stack/domain from JD, else Cross-functional (strong generic ATS for PO/PM).
+  const stackRank = ['Salesforce', 'SAP', 'ERP', 'AWS', 'Azure', 'AI', 'Cloud', 'CRM'];
+  const stackTheme = stackRank.find((s) =>
+    themes.some((t) => t.toLowerCase() === s.toLowerCase()),
   );
-  const kwPhrase = kws.length
-    ? ` Relevant strengths for this role include ${kws.slice(0, 5).join(', ')}.`
-    : '';
+  const hasCross =
+    themes.some((t) => /cross[- ]functional/i.test(t)) ||
+    /cross[- ]functional|schnittstellen|übergreifend|cross functional/.test(jdLower);
+  let headlineTheme =
+    stackTheme ||
+    (hasCross ? 'Cross-functional' : null) ||
+    themes.find((t) =>
+      /^(Stakeholder Management|Agile|Scrum|Kanban|Roadmaps|Backlog)$/i.test(t),
+    ) ||
+    (focus === 'Product Ownership' ? 'Cross-functional' : null) ||
+    themes.find((t) => !/^(product manager|product owner|sql|analytics)$/i.test(t)) ||
+    'Agile & Strategy';
+  resume.subtitle = noEmDash(`Product Manager | ${focus} | ${headlineTheme}`);
+
+  // Keep master summary — do not rewrite (avoids blank space / layout churn)
   resume.resumeSummary = noEmDash(
-    `Results-driven Product Manager with ${APPLICANT_YOE} years managing B2B product lifecycles from discovery through delivery. Skilled in market analysis, backlog prioritization, release planning, and cross-functional collaboration with engineering, design, sales, and operations.${kwPhrase} Analytical mindset with SQL/Power BI experience and a focus on shipping improvements that move business outcomes.`,
+    String(master.resumeSummary || resume.resumeSummary || '').replace(/\*\*/g, ''),
   );
 
+  // Master skills as base. Only JD-matched themes move to the front — no hardcoded
+  // Product Strategy / Requirement Gathering bump on every pack.
   const skills = resume.resumeSkills.split(',').map((s) => s.trim()).filter(Boolean);
-  const prefer = [...kws, 'Product Strategy', 'MVP', 'Scrum', 'Stakeholder Management', 'SQL', 'Market Research', 'JIRA', 'A/B Testing'];
+  const jdPrefer = [];
+  for (const p of [...themes, ...kws]) {
+    if (!p || jdPrefer.some((x) => x.toLowerCase() === p.toLowerCase())) continue;
+    jdPrefer.push(p);
+  }
   const ordered = [];
-  for (const p of prefer) {
+  for (const p of jdPrefer) {
     const hit = skills.find(
       (s) => s.toLowerCase() === p.toLowerCase() || s.toLowerCase().includes(p.toLowerCase()),
     );
     if (hit && !ordered.includes(hit)) ordered.push(hit);
+    else if (
+      !ordered.some((o) => o.toLowerCase() === p.toLowerCase()) &&
+      p.length > 2 &&
+      themes.some((t) => t.toLowerCase() === p.toLowerCase())
+    ) {
+      // add JD theme chip only if truth extractor found it in this JD
+      ordered.push(p);
+    }
   }
+  // Keep remaining master skills in master order
   for (const s of skills) if (!ordered.includes(s)) ordered.push(s);
-  resume.resumeSkills = ordered.join(', ');
+  resume.resumeSkills = ordered.slice(0, 40).join(', ');
 
-  // Keep master bullet density (contentGuard); light cleanup only — no thinning
+  // Master bullets kept as-is. JD terms go into skills chips (+ headline) — ATS reads those.
+  // Do not duplicate skills already on the chips into experience bullets.
   resume.resumeExperience = (master.resumeExperience || []).map((job) => ({
     ...job,
     bullets: noEmDash(String(job.bullets || ''))
@@ -135,6 +186,16 @@ function tailorResume(master, { company, role, jd }) {
       .replace(/accelerating Saas/gi, 'accelerating SaaS')
       .replace(/1\.000/g, '1,000'),
   }));
+  if (Array.isArray(resume.resumeAchievements)) {
+    resume.resumeAchievements = resume.resumeAchievements.map((ach) => ({
+      ...ach,
+      title: noEmDash(String(ach.title || '').replace(/\*\*/g, '')),
+      desc: noEmDash(String(ach.desc || '').replace(/\*\*/g, '')),
+    }));
+  }
+  if (resume.resumeSummary) {
+    resume.resumeSummary = noEmDash(String(resume.resumeSummary).replace(/\*\*/g, ''));
+  }
 
   // Never drop photo
   resume.avatar = master.avatar || resume.avatar;
@@ -144,7 +205,7 @@ function tailorResume(master, { company, role, jd }) {
     showPhoto: true,
   };
 
-  return { resume, keywords: kws, focus };
+  return { resume, keywords: themes.length ? themes : kws, focus };
 }
 
 function tailorCoverLetter(master, { company, role, jd, keywords, focus }) {
@@ -152,29 +213,62 @@ function tailorCoverLetter(master, { company, role, jd, keywords, focus }) {
   cl.companyName = company;
   cl.jobTitle = role;
   cl.salutation = `To the Hiring Team at ${company},`;
-  const theme = keywords.slice(0, 3).join(', ') || focus;
-  // Keep master CL density; only swap company/role + light theme line
-  cl.p1 = noEmDash(
-    String(master.p1 || '')
-      .replaceAll('{{role}}', role)
-      .replaceAll('{{company}}', company)
-      .replace(/I am writing to express my keen interest/i, 'I am writing to apply'),
-  );
+  const roleLower = String(role || '').toLowerCase();
+  const jdLower = String(jd || '').toLowerCase();
+  const isPmm = roleLower.includes('marketing') || jdLower.includes('product marketing');
+  const isAi = /\bai\b|machine learning|\bllm\b|generative/.test(`${roleLower} ${jdLower}`);
+
+  const fill = (s) =>
+    noEmDash(
+      String(s || '')
+        .replaceAll('{{role}}', role)
+        .replaceAll('{{company}}', company)
+        .replace(/\b3\+\s*years\b/gi, `${APPLICANT_YOE} years`)
+        .replace(/\bInc\.\./g, 'Inc.')
+        .replace(/\bapply in the\b/i, 'apply for the'),
+    );
+
+  cl.p1 = fill(master.p1);
   if (!cl.p1 || cl.p1.includes('{{')) {
     cl.p1 = noEmDash(
-      `I am writing to apply for the ${role} role at ${company}. With ${APPLICANT_YOE} years of experience in product, market analysis, and agile execution, along with a Master's degree in International Management (specialization in Product Management & Strategy) from Berlin, I bring a unique blend of strategic thinking, customer-centric approach, and passion for technology.`,
+      `I am writing to apply for the ${role} role at ${company}. With ${APPLICANT_YOE} years of experience in product, market analysis, and agile execution, along with a Master's in International Management (Product Management & Strategy) from Berlin, I bring strategic thinking, a customer-centric approach, and a practical bias for measurable outcomes.`,
     );
   } else {
-    // Keep CL YOE aligned with resume if master template still says "3+"
-    cl.p1 = cl.p1.replace(/\b3\+\s*years\b/gi, `${APPLICANT_YOE} years`);
+    cl.p1 = cl.p1.replace(/I am writing to express my keen interest/i, 'I am writing to apply');
   }
-  cl.p2 = noEmDash(String(master.p2 || cl.p2));
-  cl.p3 = noEmDash(
-    `What excites me most about this ${role} opportunity is how it connects ${theme} with real customer and business outcomes. I am passionate about shipping products that solve real problems and move metrics, and I would love to bring my experimentation mindset, analytical toolkit, and cross-functional leadership to the team at ${company}.`,
-  );
-  cl.p4 = noEmDash(
-    `Thank you for your consideration. I am based in Berlin, available for interviews soon, can start immediately, and hold a valid work permit to work full-time in Germany. I look forward to speaking with you.`,
-  );
+
+  // Keep master density — do not thin p2.
+  cl.p2 = fill(master.p2 || cl.p2);
+
+  // Dense, role-aware interest paragraph (master floor ~340+ chars).
+  if (isPmm && isAi) {
+    cl.p3 = noEmDash(
+      `What draws me to the ${role} role at ${company} is the mix of product storytelling, technical credibility, and go-to-market craft around data and AI products. I enjoy turning research, enablement, and customer feedback into clearer positioning and better product decisions, and I would welcome the chance to bring that experimentation mindset and cross-functional habit to your team.`,
+    );
+  } else if (isPmm) {
+    cl.p3 = noEmDash(
+      `What draws me to the ${role} role at ${company} is the chance to connect product value with clear market messaging and partner enablement. I like roles where research, training, and feedback loops turn into sharper GTM decisions, and I would welcome contributing that analytical, customer-close approach on your team.`,
+    );
+  } else {
+    const themeBits = keywords
+      .filter((k) => !/^(Product Manager|Product Owner|SQL|Stakeholder Management)$/i.test(k))
+      .slice(0, 3);
+    const theme =
+      themeBits.length >= 1
+        ? `especially ${themeBits.join(', ').toLowerCase()} in practical delivery`
+        : 'working close to customers, partners, and the product in market';
+    cl.p3 = noEmDash(
+      `What excites me about the ${role} role at ${company} is ${theme}. I am passionate about shipping products that solve real problems and move business metrics, and I would love to bring my experimentation mindset, analytical toolkit, and cross-functional leadership to your team.`,
+    );
+  }
+
+  cl.p4 = fill(master.p4);
+  if (!cl.p4 || cl.p4.length < 200) {
+    cl.p4 = noEmDash(
+      `Thank you for your consideration. I am based in Berlin, available for interviews at your earliest convenience, can start immediately, and hold a valid work permit to work full-time in Germany. I look forward to talking with you.`,
+    );
+  }
+
   cl.highlights = (master.highlights || []).map((h) => ({
     ...h,
     text: noEmDash(String(h.text || '')),
@@ -184,6 +278,8 @@ function tailorCoverLetter(master, { company, role, jd, keywords, focus }) {
     ...(master.layoutSettings || {}),
     ...(cl.layoutSettings || {}),
     showPhoto: true,
+    // Larger body type so the letter does not look sparse on the page.
+    fontSize: Math.max(Number(cl.layoutSettings?.fontSize || master.layoutSettings?.fontSize || 9), 10),
   };
   return cl;
 }
@@ -245,7 +341,12 @@ export async function composePack(opts = {}) {
   );
   if (boost.stdout) console.log(boost.stdout);
   if (boost.status !== 0) {
-    const detail = (boost.stderr || boost.stdout || '').slice(0, 800);
+    const detail = (boost.stderr || boost.stdout || '').slice(0, 1200);
+    if (boost.status === 4 || /QUALITY GATE FAILED/i.test(detail)) {
+      throw new Error(
+        `Quality gate blocked pack (ATS stuffing / language / honesty checks). Will not upload. ${detail}`,
+      );
+    }
     throw new Error(`ATS boost failed (need >=${atsTarget}): ${detail || boost.status}`);
   }
   let atsScore = Number(atsTarget) || 90;
@@ -268,7 +369,19 @@ export async function composePack(opts = {}) {
   let coverLetterUrl = exported.coverLetterPdf;
   let r2Meta = null;
   if (!skipR2) {
-    r2Meta = await uploadApplicationDocs({ jobId, packDir: outDir, company });
+    r2Meta = await uploadApplicationDocs({
+      jobId,
+      packDir: outDir,
+      company,
+      resumeFileNamePattern:
+        opts.resumeFileNamePattern ||
+        opts.resume_file_name_pattern ||
+        opts.resumePdfNamePattern,
+      coverLetterFileNamePattern:
+        opts.coverLetterFileNamePattern ||
+        opts.cover_letter_file_name_pattern ||
+        opts.coverLetterPdfNamePattern,
+    });
     resumeUrl = r2Meta.resumeUrl;
     coverLetterUrl = r2Meta.coverLetterUrl;
     await writeFile(path.join(outDir, 'r2.json'), JSON.stringify(r2Meta, null, 2));

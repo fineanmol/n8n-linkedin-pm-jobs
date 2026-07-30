@@ -99,7 +99,8 @@ function softSeniorityFromTitle(title) {
   }
   if (/\b(principal|staff)\b/i.test(t)) return 'Principal/Staff';
   if (/\b(director|head of|vp |vice president)\b/i.test(t)) return 'Director';
-  if (/\b(senior|lead)\b/i.test(t)) return 'Mid-Senior level';
+  // Soft label only — does not auto-reject; years gate decides keep/skip.
+  if (/\b(senior|lead|sr\.?)\b/i.test(t)) return 'Mid-Senior level';
   return '';
 }
 

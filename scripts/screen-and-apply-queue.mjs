@@ -2,7 +2,7 @@
 /**
  * From the Jobs sheet (starting at a row), for each "Not Applied" job:
  *   1) Check LinkedIn if still open
- *   2) If closed → mark Expired on sheet (NO resume/CL generation)
+ *   2) If closed → mark Not Available Now on sheet (NO resume/CL generation)
  *   3) If open → print next open jobs (generation/apply happens separately)
  *
  * Usage:
@@ -87,8 +87,8 @@ function parseCsv(text) {
 async function markExpired(jobId, reason) {
   const payload = {
     job_id: jobId,
-    status: 'Expired',
-    notes: `EXPIRED ${new Date().toISOString().slice(0, 10)} — ${reason} (no resume/CL generated)`,
+    status: 'Not Available Now',
+    notes: `NOT AVAILABLE ${new Date().toISOString().slice(0, 10)} — ${reason} (no resume/CL generated)`,
   };
   const res = await fetch(
     process.env.N8N_SAVE_DOCS_WEBHOOK ||
@@ -151,7 +151,7 @@ async function main() {
         for (const id of ids) {
           const r = await markExpired(id, check.reason);
           if (r.status < 400) {
-            console.log(`  → marked Expired (${id})`);
+            console.log(`  → marked Not Available Now (${id})`);
             break;
           }
         }

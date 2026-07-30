@@ -98,7 +98,19 @@
             {
               "id": "cfg-excluded-role-keywords",
               "name": "excludedRoleKeywords",
-              "value": "director of product,director product,Vice President, Director,head of product,vice president,vp of product,vp product,chief product,chief product officer,cpo,product line manager,line manager,senior product manager,staff product,principal product,group product manager,product designer,ux designer,ui designer,service designer,designer,design lead,head of design,design manager,senior designer,principal designer,staff designer, intern",
+              "value": "director of product,director product,Vice President, Director,head of product,vice president,vp of product,vp product,chief product,chief product officer,cpo,product line manager,line manager,staff product,principal product,group product manager,lead product manager,lead product owner,product lead,global product manager,global product lead,global product owner,founding product lead,founding product manager,product designer,ux designer,ui designer,service designer,designer,design lead,head of design,design manager,senior designer,principal designer,staff designer, intern",
+              "type": "string"
+            },
+            {
+              "id": "cfg-resume-pdf-name",
+              "name": "resumePdfNamePattern",
+              "value": "Sakshi_Resume_{company}",
+              "type": "string"
+            },
+            {
+              "id": "cfg-cl-pdf-name",
+              "name": "coverLetterPdfNamePattern",
+              "value": "Sakshi_Cover_Letter_{company}",
               "type": "string"
             }
           ]
@@ -240,7 +252,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const incomingJobs = $('\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data').all();\nconst sheetRows = $('\ud83d\udcca Get Existing Job IDs').all();\n\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\n\n// Single source of truth: same list as searchQueries (what you search = what titles we keep)\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nconst EXCLUDED_KEYWORDS = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglishJob(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title || '').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/\\([mwfd]+\\/[mwfd]*w[mwfd]*\\/[dxm]\\)/i.test(t)) return false;\n  if (/\\/in[\\s),]|\\/in$|\\*in/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n  const germanWords = [\n    ' f\u00fcr ',' und ',' mit ',' bei ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ',\n    'entwickler','leiter','berater','mitarbeiter','teamleiter',\n    'projektleiter','sachbearbeiter','kaufmann','kauffrau',\n    'fachkraft','stellenangebot','gesucht','vollzeit','teilzeit',\n    'festanstellung','unbefristet','befristet','ausbildung',\n    'praktikum','werkstudent','referent','fachinformatiker'\n  ];\n  return !germanWords.some(w => t.includes(w));\n}\n\nfunction isExcludedRole(title) {\n  if (EXCLUDED_KEYWORDS.length === 0) return false;\n  const t = (title || '').toLowerCase();\n  return EXCLUDED_KEYWORDS.some(kw => t.includes(kw));\n}\n\nfunction matchesSearchRole(title) {\n  if (ROLE_TERMS.length === 0) return true;\n  const t = (title || '').toLowerCase();\n  return ROLE_TERMS.some(term => t.includes(term));\n}\n\nfunction normaliseKey(company, title) {\n  const clean = s => (s || '').toLowerCase()\n    .replace(/\\(.*?\\)/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return `${clean(company)}|${clean(title)}`;\n}\n\nconst seenInRun = new Set();\nconst deduped = incomingJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  return true;\n});\n\nconst englishJobs = deduped.filter(item =>\n  isEnglishJob(item.json.position || item.json.title || '')\n);\n\nlet nonMatchCount = 0;\nlet excludedCount = 0;\nconst matchedJobs = englishJobs.filter(item => {\n  const title = item.json.position || item.json.title || '';\n  if (isExcludedRole(title)) { excludedCount++; return false; }\n  if (!matchesSearchRole(title)) { nonMatchCount++; return false; }\n  return true;\n});\n\nconst existingIds = new Set();\nconst existingKeys = new Set();\n\nfor (const item of sheetRows) {\n  const id = String(\n    item.json.job_id || item.json.Job_ID || item.json['job id'] || ''\n  ).trim();\n  if (id.length > 3) existingIds.add(id);\n\n  const company  = item.json.company  || item.json.Company  || '';\n  const position = item.json.position || item.json.Position || item.json.title || item.json.Title || '';\n  const key = normaliseKey(company, position);\n  if (key.length > 5) existingKeys.add(key);\n}\n\nconsole.log(`Raw:${incomingJobs.length} \u2192 deduped:${deduped.length} \u2192 EN:${englishJobs.length} \u2192 matched:${matchedJobs.length} (+${nonMatchCount} no match, +${excludedCount} excluded) | sheet:${existingIds.size}`);\n\nconst newJobs = matchedJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  if (jobId.length <= 3 || item.json._empty) return false;\n  if (existingIds.has(jobId)) return false;\n  const key = normaliseKey(item.json.company || '', item.json.position || item.json.title || '');\n  if (existingKeys.has(key)) {\n    console.log(`\u26a0\ufe0f  Repost skipped: ${item.json.company} \u2013 ${item.json.position}`);\n    return false;\n  }\n  return true;\n});\n\nconsole.log(`\u2705 ${newJobs.length} genuinely new jobs`);\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
+        "jsCode": "const incomingJobs = $('\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data').all();\nconst sheetRows = $('\ud83d\udcca Get Existing Job IDs').all();\n\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\n\n// Single source of truth: same list as searchQueries (what you search = what titles we keep)\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nconst EXCLUDED_KEYWORDS = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglishJob(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title || '').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/\\([mwfd]+\\/[mwfd]*w[mwfd]*\\/[dxm]\\)/i.test(t)) return false;\n  if (/\\/in[\\s),]|\\/in$|\\*in/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n  const germanWords = [\n    ' f\u00fcr ',' und ',' mit ',' bei ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ',\n    'entwickler','leiter','berater','mitarbeiter','teamleiter',\n    'projektleiter','sachbearbeiter','kaufmann','kauffrau',\n    'fachkraft','stellenangebot','gesucht','vollzeit','teilzeit',\n    'festanstellung','unbefristet','befristet','ausbildung',\n    'praktikum','werkstudent','referent','fachinformatiker'\n  ];\n  return !germanWords.some(w => t.includes(w));\n}\n\nfunction isExcludedRole(title) {\n  if (EXCLUDED_KEYWORDS.length === 0) return false;\n  // Strip () so \"(Senior) Product Manager\" matches \"senior product manager\"\n  const t = String(title || '').toLowerCase().replace(/[()[\\]{}]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return EXCLUDED_KEYWORDS.some(kw => kw && t.includes(kw));\n}\n\nfunction matchesSearchRole(title) {\n  if (ROLE_TERMS.length === 0) return true;\n  const t = (title || '').toLowerCase();\n  return ROLE_TERMS.some(term => t.includes(term));\n}\n\nfunction normaliseKey(company, title) {\n  const clean = s => (s || '').toLowerCase()\n    .replace(/\\(.*?\\)/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return `${clean(company)}|${clean(title)}`;\n}\n\nconst seenInRun = new Set();\nconst deduped = incomingJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  return true;\n});\n\nconst englishJobs = deduped.filter(item =>\n  isEnglishJob(item.json.position || item.json.title || '')\n);\n\nlet nonMatchCount = 0;\nlet excludedCount = 0;\nconst matchedJobs = englishJobs.filter(item => {\n  const title = item.json.position || item.json.title || '';\n  if (isExcludedRole(title)) { excludedCount++; return false; }\n  if (!matchesSearchRole(title)) { nonMatchCount++; return false; }\n  return true;\n});\n\nconst existingIds = new Set();\nconst existingKeys = new Set();\n\nfor (const item of sheetRows) {\n  const id = String(\n    item.json.job_id || item.json.Job_ID || item.json['job id'] || ''\n  ).trim();\n  if (id.length > 3) existingIds.add(id);\n\n  const company  = item.json.company  || item.json.Company  || '';\n  const position = item.json.position || item.json.Position || item.json.title || item.json.Title || '';\n  const key = normaliseKey(company, position);\n  if (key.length > 5) existingKeys.add(key);\n}\n\nconsole.log(`Raw:${incomingJobs.length} \u2192 deduped:${deduped.length} \u2192 EN:${englishJobs.length} \u2192 matched:${matchedJobs.length} (+${nonMatchCount} no match, +${excludedCount} excluded) | sheet:${existingIds.size}`);\n\nconst newJobs = matchedJobs.filter(item => {\n  const jobId = String(item.json.job_id || '').trim();\n  if (jobId.length <= 3 || item.json._empty) return false;\n  if (existingIds.has(jobId)) return false;\n  const key = normaliseKey(item.json.company || '', item.json.position || item.json.title || '');\n  if (existingKeys.has(key)) {\n    console.log(`\u26a0\ufe0f  Repost skipped: ${item.json.company} \u2013 ${item.json.position}`);\n    return false;\n  }\n  return true;\n});\n\nconsole.log(`\u2705 ${newJobs.length} genuinely new jobs`);\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
       },
       "id": "38a9bda4-4adb-434f-a50f-bed76023cab7",
       "name": "\ud83d\udd0e Filter New Jobs Only",
@@ -1421,7 +1433,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sync applied_date when you change status in Google Sheets\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.jobStatusSnapshot) staticData.jobStatusSnapshot = {};\n\nconst today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }); // YYYY-MM-DD in local tz\n\nfunction norm(s) {\n  return String(s || '').trim().toLowerCase();\n}\n\nfunction isAppliedLike(status) {\n  const n = norm(status);\n  if (!n) return false;\n  const notApplied = ['not applied', 'new', 'to apply', 'not applied yet', 'open', 'saved'];\n  if (notApplied.includes(n)) return false;\n  const appliedTerms = [\n    'applied', 'application sent', 'submitted', 'interview', 'interviewing',\n    'offer', 'rejected', 'withdrawn', 'in progress', 'screening', 'phone screen',\n    'assessment', 'hired', 'accepted'\n  ];\n  return appliedTerms.some(t => n === t || n.includes(t));\n}\n\nconst updates = [];\nconst rows = $input.all();\n\nfor (const item of rows) {\n  const j = item.json;\n  const jobId = String(j.job_id || j.Job_ID || j['job id'] || '').trim();\n  if (jobId.length < 3) continue;\n\n  const status = String(j.status || j.Status || 'Not Applied').trim();\n  const appliedDate = String(\n    j.applied_date || j['applied date'] || j.Applied_Date || j['Applied Date'] || ''\n  ).trim();\n\n  const prev = staticData.jobStatusSnapshot[jobId] || null;\n  const prevStatus = prev ? String(prev.status || '').trim() : '';\n\n  let newAppliedDate = null;\n\n  if (isAppliedLike(status)) {\n    if (!appliedDate) {\n      // Applied in sheet, date missing \u2192 fill today\n      newAppliedDate = today;\n    } else if (prevStatus && norm(prevStatus) !== norm(status) && !isAppliedLike(prevStatus)) {\n      // Just changed to Applied (or similar)\n      newAppliedDate = today;\n    }\n  }\n\n  staticData.jobStatusSnapshot[jobId] = {\n    status,\n    applied_date: newAppliedDate || appliedDate || (prev?.applied_date || ''),\n  };\n\n  if (newAppliedDate) {\n    updates.push({\n      json: {\n        job_id: jobId,\n        row_number: j.row_number,\n        status,\n        applied_date: newAppliedDate,\n        last_checked: today,\n      }\n    });\n  }\n}\n\nconsole.log(`Status sync: ${rows.length} rows checked \u2192 ${updates.length} applied_date update(s)`);\nif (updates.length === 0) return [{ json: { _noUpdates: true } }];\nreturn updates;\n"
+        "jsCode": "// Sync applied_date when you change status in Google Sheets\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.jobStatusSnapshot) staticData.jobStatusSnapshot = {};\n\nconst today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }); // YYYY-MM-DD in local tz\n\nfunction norm(s) {\n  return String(s || '').trim().toLowerCase();\n}\n\nfunction isAppliedLike(status) {\n  const n = norm(status);\n  if (!n) return false;\n  const notApplied = ['not applied', 'ready to apply', 'new', 'to apply', 'not applied yet', 'open', 'saved', 'manual apply required'];\n  if (notApplied.includes(n)) return false;\n  const appliedTerms = [\n    'applied', 'application sent', 'submitted', 'interview', 'interviewing',\n    'offer', 'rejected', 'withdrawn', 'in progress', 'screening', 'phone screen',\n    'assessment', 'hired', 'accepted'\n  ];\n  return appliedTerms.some(t => n === t || (t !== 'applied' && n.includes(t)) || (t === 'applied' && (n === 'applied' || n.startsWith('applied ') || n.endsWith(' applied'))));\n}\n\nconst updates = [];\nconst rows = $input.all();\n\nfor (const item of rows) {\n  const j = item.json;\n  const jobId = String(j.job_id || j.Job_ID || j['job id'] || '').trim();\n  if (jobId.length < 3) continue;\n\n  const status = String(j.status || j.Status || 'Not Applied').trim();\n  const appliedDate = String(\n    j.applied_date || j['applied date'] || j.Applied_Date || j['Applied Date'] || ''\n  ).trim();\n\n  const prev = staticData.jobStatusSnapshot[jobId] || null;\n  const prevStatus = prev ? String(prev.status || '').trim() : '';\n\n  let newAppliedDate = null;\n\n  if (isAppliedLike(status)) {\n    if (!appliedDate) {\n      // Applied in sheet, date missing \u2192 fill today\n      newAppliedDate = today;\n    } else if (prevStatus && norm(prevStatus) !== norm(status) && !isAppliedLike(prevStatus)) {\n      // Just changed to Applied (or similar)\n      newAppliedDate = today;\n    }\n  }\n\n  staticData.jobStatusSnapshot[jobId] = {\n    status,\n    applied_date: newAppliedDate || appliedDate || (prev?.applied_date || ''),\n  };\n\n  if (newAppliedDate) {\n    updates.push({\n      json: {\n        job_id: jobId,\n        row_number: j.row_number,\n        status,\n        applied_date: newAppliedDate,\n        last_checked: today,\n      }\n    });\n  }\n}\n\nconsole.log(`Status sync: ${rows.length} rows checked \u2192 ${updates.length} applied_date update(s)`);\nif (updates.length === 0) return [{ json: { _noUpdates: true } }];\nreturn updates;\n"
       },
       "id": "88832b6f-237d-4c56-b1bd-00c9a1ed39bf",
       "name": "\ud83d\udd0d Detect Manual Status Changes",
@@ -1625,7 +1637,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('⚙️ Config').first().json.apifyApiKey }}&waitForFinish=90",
+        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('\u2699\ufe0f Config').first().json.apifyApiKey }}&waitForFinish=90",
         "sendBody": true,
         "contentType": "json",
         "body": {
@@ -1648,7 +1660,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('⚙️ Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,sector,applyType,experienceLevel,description",
+        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('\u2699\ufe0f Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,sector,applyType,experienceLevel,description",
         "options": {}
       },
       "id": "39c37a47-ba2d-431b-b107-5da27a146c4c",
@@ -1663,7 +1675,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\n// Transform Apify cheap_scraper/linkedin-job-scraper output\n// to same shape as '\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data'\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\n\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title || '').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(title) {\n  const t = (title||'').toLowerCase();\n  return EXCLUDED_KW.some(kw => t.includes(kw));\n}\nfunction matchesRole(title) {\n  if (ROLE_TERMS.length === 0) return true;\n  const t = (title||'').toLowerCase();\n  return ROLE_TERMS.some(term => t.includes(term));\n}\n\nconst raw = $input.all();\nconst jobs = [];\nfor (const item of raw) {\n  const j = item.json;\n  const title = j.jobTitle || '';\n  if (!isEnglish(title)) continue;\n  if (isExcluded(title)) continue;\n  if (!matchesRole(title)) continue;\n  const jobId = String(j.jobId || '').trim();\n  if (!jobId) continue;\n  jobs.push({\n    json: {\n      job_id:     'li_' + jobId,\n      company:    j.companyName || 'Unknown',\n      position:   title,\n      location:   j.location || 'Unknown',\n      job_url:    j.jobUrl || ('https://www.linkedin.com/jobs/view/' + jobId + '/'),\n      apply_type: j.applyType === 'EASY' ? 'LinkedIn Easy Apply' : 'LinkedIn External',\n      is_linkedin: 'Yes',\n      is_remote:   (j.workType||'').toLowerCase().includes('remote') ? 'Yes' : 'No',\n      employment_type: 'FULLTIME',\n      posted_date:     j.publishedAt ? j.publishedAt.split('T')[0] : new Date().toISOString().split('T')[0],\n      description:     '',\n      status:          'Not Applied',\n      priority:        'Medium',\n      applied_date:    '',\n      cover_letter_generated: 'No',\n      resume_optimized:       'No',\n      missing_skills:  '',\n      application_id:  '',\n      notes:           j.applicationsCount || '',\n      fetched_date:    new Date().toISOString().split('T')[0],\n      last_checked:    new Date().toISOString().split('T')[0],\n      hasNewJobs:      false,\n      _source:         'apify'\n    }\n  });\n}\nconsole.log(`Apify: ${raw.length} raw \u2192 ${jobs.length} after filters`);\nreturn jobs.length > 0 ? jobs : [{ json: { job_id: '', _empty: true, _source: 'apify' } }];\n"
+        "jsCode": "\n// Transform Apify cheap_scraper/linkedin-job-scraper output\n// to same shape as '\ud83d\udccb Parse LinkedIn HTML \u2192 Job Data'\nconst cfg = $('\u2699\ufe0f Config').first().json;\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\n\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title || '').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title || '')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(title) {\n  // Strip () so \"(Senior) Product Manager\" matches \"senior product manager\"\n  const t = String(title||'').toLowerCase().replace(/[()[\\]{}]/g, ' ').replace(/\\s+/g, ' ').trim();\n  return EXCLUDED_KW.some(kw => kw && t.includes(kw));\n}\nfunction matchesRole(title) {\n  if (ROLE_TERMS.length === 0) return true;\n  const t = (title||'').toLowerCase();\n  return ROLE_TERMS.some(term => t.includes(term));\n}\n\nconst raw = $input.all();\nconst jobs = [];\nfor (const item of raw) {\n  const j = item.json;\n  const title = j.jobTitle || '';\n  if (!isEnglish(title)) continue;\n  if (isExcluded(title)) continue;\n  if (!matchesRole(title)) continue;\n  const jobId = String(j.jobId || '').trim();\n  if (!jobId) continue;\n  jobs.push({\n    json: {\n      job_id:     'li_' + jobId,\n      company:    j.companyName || 'Unknown',\n      position:   title,\n      location:   j.location || 'Unknown',\n      job_url:    j.jobUrl || ('https://www.linkedin.com/jobs/view/' + jobId + '/'),\n      apply_type: j.applyType === 'EASY' ? 'LinkedIn Easy Apply' : 'LinkedIn External',\n      is_linkedin: 'Yes',\n      is_remote:   (j.workType||'').toLowerCase().includes('remote') ? 'Yes' : 'No',\n      employment_type: 'FULLTIME',\n      posted_date:     j.publishedAt ? j.publishedAt.split('T')[0] : new Date().toISOString().split('T')[0],\n      description:     '',\n      status:          'Not Applied',\n      priority:        'Medium',\n      applied_date:    '',\n      cover_letter_generated: 'No',\n      resume_optimized:       'No',\n      missing_skills:  '',\n      application_id:  '',\n      notes:           j.applicationsCount || '',\n      fetched_date:    new Date().toISOString().split('T')[0],\n      last_checked:    new Date().toISOString().split('T')[0],\n      hasNewJobs:      false,\n      _source:         'apify'\n    }\n  });\n}\nconsole.log(`Apify: ${raw.length} raw \u2192 ${jobs.length} after filters`);\nreturn jobs.length > 0 ? jobs : [{ json: { job_id: '', _empty: true, _source: 'apify' } }];\n"
       },
       "id": "eb8d38d5-8267-4bf4-a2d8-807bc14cf5ab",
       "name": "\ud83d\udccb Parse Apify Jobs \u2192 Job Data",
@@ -1709,18 +1721,10 @@
           "cachedResultName": "Jobs",
           "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
         },
-        "filtersUI": {
-          "values": [
-            {
-              "lookupColumn": "status",
-              "lookupValue": "Not Applied"
-            }
-          ]
-        },
         "options": {}
       },
       "id": "03af79d0-18a6-4c7e-8833-591e24179587",
-      "name": "\ud83d\udcca Get Not-Applied Jobs",
+      "name": "\ud83d\udcca Get Open Pipeline Jobs",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
@@ -1788,7 +1792,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\n// Check HTTP response for LinkedIn job page \u2192 detect expired listings\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || item.json || '').toLowerCase();\n  const jobId = item.json._jobId || '';\n  const rowNum = item.json._rowNum;\n  // LinkedIn shows these strings when a job is closed\n  const closedSignals = [\n    'no longer accepting applications',\n    'this job is no longer available',\n    'job listing is no longer active',\n    'posting has been removed',\n    'position has been filled',\n    'job is closed'\n  ];\n  const isClosed = closedSignals.some(s => body.includes(s));\n  if (isClosed && jobId) {\n    expired.push({\n      json: {\n        job_id:       jobId,\n        row_number:   rowNum,\n        status:       'Expired',\n        last_checked: new Date().toISOString().split('T')[0]\n      }\n    });\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nreturn expired.length > 0 ? expired : [{ json: { _noExpired: true } }];\n"
+        "jsCode": "\n// Check HTTP response for LinkedIn job page \u2192 detect expired listings\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || item.json || '').toLowerCase();\n  const jobId = item.json._jobId || '';\n  const rowNum = item.json._rowNum;\n  // LinkedIn shows these strings when a job is closed\n  const closedSignals = [\n    'no longer accepting applications',\n    'this job is no longer available',\n    'job listing is no longer active',\n    'posting has been removed',\n    'position has been filled',\n    'job is closed'\n  ];\n  const isClosed = closedSignals.some(s => body.includes(s));\n  if (isClosed && jobId) {\n    expired.push({\n      json: {\n        job_id:       jobId,\n        row_number:   rowNum,\n        status:       'Not Available Now',\n        last_checked: new Date().toISOString().split('T')[0]\n      }\n    });\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nreturn expired.length > 0 ? expired : [{ json: { _noExpired: true } }];\n"
       },
       "id": "3642ead7-9c43-48b0-9fc1-169999227c56",
       "name": "\ud83d\udcdd Detect Expired Jobs",
@@ -1873,7 +1877,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('⚙️ Config').first().json.apifyApiKey }}&waitForFinish=90",
+        "url": "=https://api.apify.com/v2/acts/cheap_scraper~linkedin-job-scraper/runs?token={{ $('\u2699\ufe0f Config').first().json.apifyApiKey }}&waitForFinish=90",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -1894,7 +1898,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('⚙️ Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,applyType,experienceLevel,description",
+        "url": "=https://api.apify.com/v2/datasets/{{$json.data.defaultDatasetId}}/items?token={{ $('\u2699\ufe0f Config').first().json.apifyApiKey }}&format=json&limit=300&fields=jobId,jobTitle,companyName,location,workType,publishedAt,postedTime,applicationsCount,jobUrl,contractType,applyType,experienceLevel,description",
         "options": {}
       },
       "id": "1bc57e8f-7a07-4a64-8f51-5c2cf6177e94",
@@ -1956,7 +1960,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst incomingJobs = $('\ud83d\udccb Parse Apify Jobs').all();\nconst sheetRows    = $('\ud83d\udcca Get Existing IDs [Apify]').all();\nconst cfg = $('\u2699\ufe0f Config').first().json;\n\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title||'').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title||'')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(t) { const s=(t||'').toLowerCase(); return EXCLUDED_KW.some(k=>s.includes(k)); }\nfunction matchesRole(t) { if(!ROLE_TERMS.length) return true; const s=(t||'').toLowerCase(); return ROLE_TERMS.some(k=>s.includes(k)); }\nfunction normaliseKey(c,t) {\n  const clean = s => (s||'').toLowerCase().replace(/\\(.*?\\)/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();\n  return `${clean(c)}|${clean(t)}`;\n}\n\nconst existingIds  = new Set(sheetRows.map(r => String(r.json.job_id||'').trim()).filter(Boolean));\nconst existingKeys = new Set(sheetRows.map(r => normaliseKey(r.json.company||'', r.json.position||r.json.title||'')).filter(s=>s.length>5));\n\nconst seenInRun = new Set();\nlet langSkip=0, exclSkip=0, roleSkip=0, dupSkip=0;\n\nconst newJobs = incomingJobs.filter(item => {\n  const j = item.json;\n  if (j._empty) return false;\n  const title = j.position || '';\n  if (!isEnglish(title))   { langSkip++;  return false; }\n  if (isExcluded(title))   { exclSkip++;  return false; }\n  if (!matchesRole(title)) { roleSkip++;  return false; }\n  const jobId = String(j.job_id||'').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  if (existingIds.has(jobId)) { dupSkip++; return false; }\n  const key = normaliseKey(j.company||'', title);\n  if (existingKeys.has(key)) { dupSkip++; return false; }\n  return true;\n});\n\nconsole.log(`Apify filter: ${incomingJobs.length} \u2192 lang:${langSkip} excl:${exclSkip} role:${roleSkip} dup:${dupSkip} \u2192 ${newJobs.length} new`);\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
+        "jsCode": "\nconst incomingJobs = $('\ud83d\udccb Parse Apify Jobs').all();\nconst sheetRows    = $('\ud83d\udcca Get Existing IDs [Apify]').all();\nconst cfg = $('\u2699\ufe0f Config').first().json;\n\nconst ENGLISH_ONLY = cfg.englishOnly !== 'false' && cfg.englishOnly !== false;\nconst ROLE_TERMS = String(cfg.searchQueries || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\nconst EXCLUDED_KW = String(cfg.excludedRoleKeywords || '')\n  .split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\nfunction isEnglish(title) {\n  if (!ENGLISH_ONLY) return true;\n  const t = (title||'').toLowerCase();\n  if (/\\([mwfd]*w[mwfd]*\\/[mwfd]+\\/[dxm]\\)/i.test(t)) return false;\n  if (/[\u00e4\u00f6\u00fc\u00df]/i.test(title||'')) return false;\n  const de = [' f\u00fcr ',' und ',' mit ',' als ',' von ',' zur ',' zum ',\n    ' der ',' die ',' das ',' im ',' zu ','entwickler','leiter','berater',\n    'mitarbeiter','projektleiter','kaufmann','kauffrau','fachkraft',\n    'werkstudent','referent','fachinformatiker','vollzeit','teilzeit','praktikum'];\n  return !de.some(w => t.includes(w));\n}\nfunction isExcluded(t) { const s=String(t||'').toLowerCase().replace(/[()[\\]{}]/g,' ').replace(/\\s+/g,' ').trim(); return EXCLUDED_KW.some(k=>k&&s.includes(k)); }\nfunction matchesRole(t) { if(!ROLE_TERMS.length) return true; const s=(t||'').toLowerCase(); return ROLE_TERMS.some(k=>s.includes(k)); }\nfunction normaliseKey(c,t) {\n  const clean = s => (s||'').toLowerCase().replace(/\\(.*?\\)/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();\n  return `${clean(c)}|${clean(t)}`;\n}\n\nconst existingIds  = new Set(sheetRows.map(r => String(r.json.job_id||'').trim()).filter(Boolean));\nconst existingKeys = new Set(sheetRows.map(r => normaliseKey(r.json.company||'', r.json.position||r.json.title||'')).filter(s=>s.length>5));\n\nconst seenInRun = new Set();\nlet langSkip=0, exclSkip=0, roleSkip=0, dupSkip=0;\n\nconst newJobs = incomingJobs.filter(item => {\n  const j = item.json;\n  if (j._empty) return false;\n  const title = j.position || '';\n  if (!isEnglish(title))   { langSkip++;  return false; }\n  if (isExcluded(title))   { exclSkip++;  return false; }\n  if (!matchesRole(title)) { roleSkip++;  return false; }\n  const jobId = String(j.job_id||'').trim();\n  if (!jobId || seenInRun.has(jobId)) return false;\n  seenInRun.add(jobId);\n  if (existingIds.has(jobId)) { dupSkip++; return false; }\n  const key = normaliseKey(j.company||'', title);\n  if (existingKeys.has(key)) { dupSkip++; return false; }\n  return true;\n});\n\nconsole.log(`Apify filter: ${incomingJobs.length} \u2192 lang:${langSkip} excl:${exclSkip} role:${roleSkip} dup:${dupSkip} \u2192 ${newJobs.length} new`);\nif (newJobs.length === 0) return [{ json: { _noNew: true } }];\nreturn newJobs.map(j => ({ json: { ...j.json, _noNew: false } }));\n"
       },
       "id": "cbb46f36-fca3-411b-8f23-766f794a2a4e",
       "name": "\ud83d\udd0e Filter New Apify Jobs",
@@ -2080,18 +2084,10 @@
           "cachedResultName": "Jobs",
           "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1xl94TeV4CA459vAk38_KAymxUEe_YAVwQ0iEajzmnXM/edit#gid=177577709"
         },
-        "filtersUI": {
-          "values": [
-            {
-              "lookupColumn": "status",
-              "lookupValue": "Not Applied"
-            }
-          ]
-        },
         "options": {}
       },
       "id": "34a34659-6464-4adf-9705-fb708d4058b8",
-      "name": "\ud83d\udcca Get Not-Applied Jobs",
+      "name": "\ud83d\udcca Get Open Pipeline Jobs",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
@@ -2153,7 +2149,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || '').toLowerCase();\n  const jobId   = String(item.json._jobId   || '').trim();\n  const rowNum  = item.json._rowNum;\n  if (!jobId) continue;\n  const closedSignals = [\n    'no longer accepting applications',\n    'job is no longer available',\n    'this listing has expired',\n    'position has been filled',\n    'job has been closed',\n    'posting has expired'\n  ];\n  if (closedSignals.some(s => body.includes(s))) {\n    expired.push({ json: {\n      job_id:       jobId,\n      row_number:   rowNum,\n      status:       'Expired',\n      last_checked: new Date().toISOString().split('T')[0]\n    }});\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nif (expired.length === 0) return [{ json: { _noExpired: true } }];\nreturn expired;\n"
+        "jsCode": "\nconst results = $input.all();\nconst expired = [];\nfor (const item of results) {\n  const body = String(item.json.data || item.json.body || '').toLowerCase();\n  const jobId   = String(item.json._jobId   || '').trim();\n  const rowNum  = item.json._rowNum;\n  if (!jobId) continue;\n  const closedSignals = [\n    'no longer accepting applications',\n    'job is no longer available',\n    'this listing has expired',\n    'position has been filled',\n    'job has been closed',\n    'posting has expired'\n  ];\n  if (closedSignals.some(s => body.includes(s))) {\n    expired.push({ json: {\n      job_id:       jobId,\n      row_number:   rowNum,\n      status:       'Not Available Now',\n      last_checked: new Date().toISOString().split('T')[0]\n    }});\n  }\n}\nconsole.log(`Expire check: ${results.length} checked \u2192 ${expired.length} expired`);\nif (expired.length === 0) return [{ json: { _noExpired: true } }];\nreturn expired;\n"
       },
       "id": "fab5f548-0ec1-4c56-9456-30282a4558c5",
       "name": "\ud83d\udcdd Detect Expired Jobs",
@@ -2829,18 +2825,7 @@
       "main": [
         [
           {
-            "node": "\ud83d\udcca Get Not-Applied Jobs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "\ud83d\udcca Get Not-Applied Jobs": {
-      "main": [
-        [
-          {
-            "node": "\ud83d\udce6 Jobs in Batches",
+            "node": "\ud83d\udcca Get Open Pipeline Jobs",
             "type": "main",
             "index": 0
           }
@@ -2976,6 +2961,17 @@
         [
           {
             "node": "\u2705 No Expired Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "\ud83d\udcca Get Open Pipeline Jobs": {
+      "main": [
+        [
+          {
+            "node": "\ud83d\udce6 Jobs in Batches",
             "type": "main",
             "index": 0
           }

@@ -66,13 +66,15 @@ function setupJobsSheet(ss) {
   sheet.setFrozenRows(1);
   
   // Add data validation for Status column
+  // Manual-apply pipeline only — unused interview/offer statuses omitted
   const statusRule = SpreadsheetApp.newDataValidation()
     .requireValueInList([
-      'Not Applied', 'Applied', 'Manual Apply Required',
-      'Under Review', 'Interview Scheduled', 'Rejected', 'Offer', 'Withdrawn'
+      'Not Applied', 'Ready to Apply', 'Applied', 'Already Applied', 'Rejected',
+      'not qualified', 'Only German Required', 'Not Available Now',
     ], true)
     .build();
-  sheet.getRange('J2:J1000').setDataValidation(statusRule);
+  // Live Jobs sheet: status is column E (legacy templates used J)
+  sheet.getRange('E2:E5000').setDataValidation(statusRule);
   
   // Add data validation for Priority column
   const priorityRule = SpreadsheetApp.newDataValidation()
@@ -80,35 +82,27 @@ function setupJobsSheet(ss) {
     .build();
   sheet.getRange('K2:K1000').setDataValidation(priorityRule);
   
-  // Conditional formatting for status
-  const range = sheet.getRange('J2:J1000');
-  
-  const appliedFormat = SpreadsheetApp.newConditionalFormatRule()
-    .whenTextEqualTo('Applied')
-    .setBackground('#c8e6c9')
-    .setRanges([range])
-    .build();
-    
-  const rejectedFormat = SpreadsheetApp.newConditionalFormatRule()
-    .whenTextEqualTo('Rejected')
-    .setBackground('#ffcdd2')
-    .setRanges([range])
-    .build();
-    
-  const interviewFormat = SpreadsheetApp.newConditionalFormatRule()
-    .whenTextEqualTo('Interview Scheduled')
-    .setBackground('#fff9c4')
-    .setRanges([range])
-    .build();
-    
-  const offerFormat = SpreadsheetApp.newConditionalFormatRule()
-    .whenTextEqualTo('Offer')
-    .setBackground('#b2dfdb')
-    .setFontColor('#004d40')
-    .setRanges([range])
-    .build();
-    
-  sheet.setConditionalFormatRules([appliedFormat, rejectedFormat, interviewFormat, offerFormat]);
+  // Conditional formatting for status (live sheet: column E)
+  // Not Applied + Ready to Apply = transparent (no rule).
+  // Closed listings use a single status: Not Available Now.
+  const range = sheet.getRange('E2:E5000');
+  const statusColors = [
+    ['Applied', '#C8E6C9', null],
+    ['Already Applied', '#A5D6A7', null],
+    ['Rejected', '#FFCDD2', null],
+    ['not qualified', '#FFCCBC', null],
+    ['Only German Required', '#D1C4E9', null],
+    ['Not Available Now', '#BDBDBD', null],
+  ];
+  const rules = statusColors.map(([status, bg, fg]) => {
+    let b = SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(status)
+      .setBackground(bg)
+      .setRanges([range]);
+    if (fg) b = b.setFontColor(fg);
+    return b.build();
+  });
+  sheet.setConditionalFormatRules(rules);
   
   // Add sample row
   const sampleRow = [
@@ -197,45 +191,113 @@ function setupCoverLettersSheet(ss) {
   Logger.log('Cover Letters sheet created ✅');
 }
 
+/**
+ * Stats dashboard — formulas must match the LIVE Jobs column layout:
+ *   E status | O is_remote | Q priority | T apply_type | Y ats_score
+ * (Older templates used J=status / F=apply_type — those counts were wrong/missing.)
+ *
+ * Re-run: setupStatsSheet or updateStatsSheetOnly
+ */
 function setupStatsSheet(ss) {
   let sheet = ss.getSheetByName('Stats');
-  if (sheet) sheet.clear();
-  else sheet = ss.insertSheet('Stats');
-  
-  sheet.getRange('A1').setValue('📊 Job Application Dashboard');
-  sheet.getRange('A1').setFontSize(18).setFontWeight('bold');
-  
-  const metrics = [
-    ['Metric', 'Count'],
-    ['Total Jobs Found', "=COUNTA(Jobs!A2:A)"],
-    ['Not Applied', "=COUNTIF(Jobs!J2:J,\"Not Applied\")"],
-    ['Applied', "=COUNTIF(Jobs!J2:J,\"Applied\")"],
-    ['Manual Apply Required', "=COUNTIF(Jobs!J2:J,\"Manual Apply Required\")"],
-    ['Under Review', "=COUNTIF(Jobs!J2:J,\"Under Review\")"],
-    ['Interview Scheduled', "=COUNTIF(Jobs!J2:J,\"Interview Scheduled\")"],
-    ['Offers', "=COUNTIF(Jobs!J2:J,\"Offer\")"],
-    ['Rejected', "=COUNTIF(Jobs!J2:J,\"Rejected\")"],
-    ['', ''],
-    ['LinkedIn Easy Apply', "=COUNTIF(Jobs!F2:F,\"LinkedIn Easy Apply\")"],
-    ['External Apply', "=COUNTIF(Jobs!F2:F,\"LinkedIn External\")+COUNTIF(Jobs!F2:F,\"Direct Website\")"],
-    ['', ''],
-    ['Avg Skill Match Score', "=IFERROR(AVERAGE(Jobs!L2:L),0)&\"%\""],
-    ['High Priority Jobs', "=COUNTIF(Jobs!K2:K,\"High\")"],
-    ['Remote Jobs', "=COUNTIF(Jobs!H2:H,\"Yes\")"],
+  if (sheet) {
+    sheet.clear();
+    sheet.getCharts().forEach((c) => sheet.removeChart(c));
+  } else {
+    sheet = ss.insertSheet('Stats');
+  }
+
+  // Live Jobs cols: E status | O is_remote | T apply_type | Y ats_score
+  const S = 'Jobs!E2:E';
+  const grid = [
+    ['Job Hunt Dashboard', '', '', '', ''],
+    ['Live from Jobs · closed = Not Available Now · formulas auto-update', '', '', '', ''],
+    ['', '', '', '', ''],
+    ['TOTAL JOBS', 'READY TO APPLY', 'APPLIED', 'CLOSED', ''],
+    [
+      '=COUNTA(Jobs!A2:A)',
+      `=COUNTIF(${S},"Ready to Apply")`,
+      `=COUNTIF(${S},"Applied")+COUNTIF(${S},"Already Applied")`,
+      `=COUNTIF(${S},"Not Available Now")`,
+      '',
+    ],
+    ['all tracked', 'pack ready', 'Applied + Already Applied', 'unavailable listings', ''],
+    ['', '', '', '', ''],
+    ['Status mix', 'Count', '', 'Quick rollups', 'Value'],
+    ['Not Applied', `=COUNTIF(${S},"Not Applied")`, '', 'Pack ready', '=B10'],
+    ['Ready to Apply', `=COUNTIF(${S},"Ready to Apply")`, '', 'Applied total', '=C5'],
+    ['Applied', `=COUNTIF(${S},"Applied")`, '', 'Filtered out', '=B14+B15'],
+    ['Already Applied', `=COUNTIF(${S},"Already Applied")`, '', 'Closed', '=B16'],
+    ['Rejected', `=COUNTIF(${S},"Rejected")`, '', 'Remote jobs', '=COUNTIF(Jobs!O2:O,"Yes")'],
+    ['not qualified', `=COUNTIF(${S},"not qualified")`, '', 'Avg ATS (packed)', '=IFERROR(ROUND(AVERAGEIF(Jobs!Y2:Y,">0"),1),"—")'],
+    ['Only German Required', `=COUNTIF(${S},"Only German Required")`, '', 'Easy Apply', '=COUNTIF(Jobs!T2:T,"LinkedIn Easy Apply")'],
+    ['Not Available Now', `=COUNTIF(${S},"Not Available Now")`, '', 'External Apply', '=COUNTIF(Jobs!T2:T,"LinkedIn External")+COUNTIF(Jobs!T2:T,"Direct Website")+COUNTIF(Jobs!T2:T,"LinkedIn")'],
   ];
-  
-  sheet.getRange(3, 1, metrics.length, 2).setValues(metrics);
-  
-  const headerRange2 = sheet.getRange(3, 1, 1, 2);
-  headerRange2.setBackground('#4285f4');
-  headerRange2.setFontColor('#ffffff');
-  headerRange2.setFontWeight('bold');
-  
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidth(2, 120);
-  sheet.getRange(4, 2, metrics.length - 1, 1).setHorizontalAlignment('center');
-  
-  Logger.log('Stats sheet created ✅');
+  sheet.getRange(1, 1, grid.length, 5).setValues(grid);
+
+  sheet.getRange('A1').setFontSize(22).setFontWeight('bold').setFontColor('#1A237E');
+  sheet.getRange('A2').setFontColor('#607D8B').setFontSize(10);
+
+  const kpiColors = ['#1565C0', '#2E7D32', '#6A1B9A', '#546E7A'];
+  kpiColors.forEach((c, i) => {
+    const col = i + 1;
+    sheet.getRange(4, col).setBackground(c).setFontColor('#fff').setFontWeight('bold').setHorizontalAlignment('center');
+    sheet.getRange(5, col).setBackground('#F5F7FA').setFontColor(c).setFontSize(26).setFontWeight('bold').setHorizontalAlignment('center');
+    sheet.getRange(6, col).setFontColor('#90A4AE').setFontSize(9).setHorizontalAlignment('center');
+  });
+  sheet.setRowHeight(5, 52);
+
+  sheet.getRange('A8:B8').setBackground('#263238').setFontColor('#fff').setFontWeight('bold');
+  sheet.getRange('D8:E8').setBackground('#263238').setFontColor('#fff').setFontWeight('bold');
+  sheet.getRange('B9:B16').setHorizontalAlignment('center').setFontWeight('bold');
+
+  sheet.setColumnWidths(1, 5, 110);
+  sheet.setColumnWidth(1, 200);
+  sheet.setColumnWidth(3, 24);
+  sheet.setColumnWidth(4, 160);
+  sheet.setFrozenRows(2);
+
+  const mixRange = sheet.getRange('A8:B16');
+  sheet.addChart(
+    sheet.newChart()
+      .setChartType(Charts.ChartType.PIE)
+      .addRange(mixRange)
+      .setOption('title', 'Status mix')
+      .setPosition(4, 7, 0, 0)
+      .build(),
+  );
+  sheet.addChart(
+    sheet.newChart()
+      .setChartType(Charts.ChartType.BAR)
+      .addRange(mixRange)
+      .setOption('title', 'Counts by status')
+      .setOption('legend', { position: 'none' })
+      .setPosition(21, 1, 0, 0)
+      .build(),
+  );
+
+  Logger.log('Stats dashboard created ✅');
+}
+
+/** Re-apply Stats formulas without wiping other sheets. Run from Apps Script: updateStatsSheetOnly */
+function updateStatsSheetOnly() {
+  setupStatsSheet(SpreadsheetApp.getActiveSpreadsheet());
+  SpreadsheetApp.getUi().alert('Stats sheet updated (closed = Not Available Now).');
+}
+
+/** Ensure Jobs!E status dropdown matches the manual-apply status set. */
+function updateJobsStatusValidationOnly() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Jobs');
+  if (!sheet) throw new Error('Jobs sheet not found');
+  const statusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList([
+      'Not Applied', 'Ready to Apply', 'Applied', 'Already Applied', 'Rejected',
+      'not qualified', 'Only German Required', 'Not Available Now',
+    ], true)
+    .build();
+  sheet.getRange('E2:E5000').setDataValidation(statusRule);
+  SpreadsheetApp.getUi().alert('Jobs status dropdown updated (manual-apply statuses only).');
 }
 
 /**

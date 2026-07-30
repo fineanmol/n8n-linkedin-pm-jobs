@@ -1,0 +1,1027 @@
+{
+  "name": "DE Funded Startups → Hiring Watchlist",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "st-manual",
+      "name": "▶ Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1,4"
+            }
+          ]
+        }
+      },
+      "id": "st-sched",
+      "name": "⏰ Mon & Thu 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "startupTargetsSpreadsheetId",
+              "value": "1pZiI5OdkdTCTR3ztXLer2seIQ9JT3SF4wUBJwP_JXsY",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "startupTargetsSheetName",
+              "value": "Target Companies",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "targetsMetaSheetName",
+              "value": "Targets Meta",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "yourEmail",
+              "value": "agarwal.anmol2004@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "techEuLookbackDays",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "c7",
+              "name": "maxEnrichPerRun",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "c8",
+              "name": "hiringCheckEnabled",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "c9",
+              "name": "forceImportSeed",
+              "value": "false",
+              "type": "string"
+            },
+            {
+              "id": "c10",
+              "name": "seedCsvUrl",
+              "value": "https://docs.google.com/spreadsheets/d/1up3Vy8aZsMdDMPqzOwW0ZEJ26fppJyilJqSEXNU3HEo/export?format=csv",
+              "type": "string"
+            },
+            {
+              "id": "c11",
+              "name": "sheetUrl",
+              "value": "https://docs.google.com/spreadsheets/d/1pZiI5OdkdTCTR3ztXLer2seIQ9JT3SF4wUBJwP_JXsY/edit",
+              "type": "string"
+            },
+            {
+              "id": "c12",
+              "name": "digestEmails",
+              "value": "agarwal.anmol2004@gmail.com, ch.sakshiasb@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "c13",
+              "name": "maxHiringChecksPerRun",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "c14",
+              "name": "draftEmailsEnabled",
+              "value": "true",
+              "type": "string"
+            },
+            {
+              "id": "c15",
+              "name": "maxDraftsPerRun",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "c16",
+              "name": "candidateName",
+              "value": "Sakshi Chaudhary",
+              "type": "string"
+            },
+            {
+              "id": "c17",
+              "name": "candidateEmail",
+              "value": "ch.sakshiasb@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "c18",
+              "name": "candidateLinkedin",
+              "value": "https://www.linkedin.com/in/fabsakshi",
+              "type": "string"
+            },
+            {
+              "id": "c19",
+              "name": "candidatePortfolio",
+              "value": "https://ai-product-sakshi.netlify.app",
+              "type": "string"
+            },
+            {
+              "id": "c20",
+              "name": "draftCooldownDays",
+              "value": 14,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "st-config",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSpreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "st-read",
+      "name": "📊 Read Target Companies",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        520,
+        400
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qr9Hp2MtzkKsQ3WO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('⚙️ Config').first().json;\nconst sheetItems = $('📊 Read Target Companies').all().map(i => i.json).filter(j => {\n  const c = String(j?.company || j?.Company || '').trim().toLowerCase();\n  return c && c !== 'company' && c !== 'name';\n});\nconst force = String(cfg.forceImportSeed || 'false') === 'true';\nconst need = force || sheetItems.length === 0;\nif (!need) {\n  return [{ json: { data: '', skipped: true, reason: 'sheet already populated' } }];\n}\nconst url = cfg.seedCsvUrl;\nconst res = await this.helpers.httpRequest({\n  method: 'GET',\n  url,\n  timeout: 20000,\n  returnFullResponse: true,\n  ignoreHttpStatusErrors: true,\n  headers: { 'User-Agent': 'n8n-startup-targets/1.0' },\n});\nconst body = typeof res.body === 'string' ? res.body : String(res.data || '');\nreturn [{ json: { data: body, skipped: false } }];\n"
+      },
+      "id": "st-maybe-seed",
+      "name": "🌐 Maybe Fetch Seed CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://funding.tech.eu/api/v1/rounds?country=Germany&from={{ $now.minus({ days: Number($('⚙️ Config').first().json.techEuLookbackDays || 14) }).toFormat('yyyy-MM-dd') }}&limit=100",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "st-techeu",
+      "name": "🌐 Fetch Tech.eu Rounds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        520
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "st-wait-http",
+      "name": "🔀 Wait Seed+Tech.eu",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1000,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('⚙️ Config').first().json;\nconst lookback = Number(cfg.techEuLookbackDays || 14);\nconst maxEnrich = Number(cfg.maxEnrichPerRun || 40);\nconst forceSeed = String(cfg.forceImportSeed || 'false') === 'true';\nconst today = new Date().toISOString().slice(0, 10);\n\nconst LEGAL = /\\b(gmbh|ug|ag|se|kg|ohg|gbr|inc|incorporated|ltd|limited|llc|corp|corporation|co|company|holding|holdings|group|sa|bv|nv)\\b/gi;\n\nfunction normalizeCompanyKey(name) {\n  return String(name || '').toLowerCase().normalize('NFKD')\n    .replace(/[\\u0300-\\u036f]/g, '').replace(/&/g, ' and ')\n    .replace(LEGAL, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nfunction parseFundingBlob(raw) {\n  const s = String(raw || '').trim();\n  if (!s) return { funding_stage: '', funding_amount: '', total_raised_note: '' };\n  const stageMatch = s.match(/\\b(pre[-\\s]?seed|seed|series\\s*[a-f]|series\\s*d\\+|growth|debt|bridge|extension)\\b/i);\n  let funding_stage = stageMatch ? stageMatch[1].replace(/\\s+/g, ' ') : '';\n  if (funding_stage) {\n    funding_stage = funding_stage.split(' ').map(w => w.toLowerCase() === 'series' ? 'Series' : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')\n      .replace(/Series\\s*([a-f])/i, (_, l) => `Series ${l.toUpperCase()}`);\n  }\n  const amountMatch = s.match(/([$€£]\\s?[\\d.,]+\\s?[kmb]?|[\\d.,]+\\s?[kmb]\\s?(?:eur|usd|€|\\$)?|mid[-\\s]?seven figures)/i);\n  return { funding_stage, funding_amount: amountMatch ? amountMatch[0].replace(/\\s+/g, ' ').trim() : s, total_raised_note: s };\n}\n\nfunction formatAmountEur(amountEur) {\n  if (amountEur == null) return '';\n  if (amountEur >= 1e9) return `€${(amountEur / 1e9).toFixed(2)}B`;\n  if (amountEur >= 1e6) return `€${(amountEur / 1e6).toFixed(amountEur >= 1e7 ? 0 : 1)}M`;\n  if (amountEur >= 1e3) return `€${Math.round(amountEur / 1e3)}k`;\n  return `€${amountEur}`;\n}\n\nfunction emptyRow(o = {}) {\n  return {\n    company: '', location: '', one_liner: '', funding_stage: '', funding_amount: '', funding_date: '',\n    total_raised_note: '', source: '', website: '', linkedin_url: '', careers_url: '',\n    apply_email: '', next_action: 'Watch', next_action_url: '',\n    hiring_pm: 'Unknown', pm_job_urls: '', pm_job_titles: '', priority: 'Medium', priority_score: '50',\n    status: 'Watch', last_funded_check: '', last_hiring_check: '', last_draft_at: '', notes: '', ...o,\n  };\n}\n\nfunction firstJobUrl(row) {\n  return String(row.pm_job_urls || '').split(' | ').map(s => s.trim()).filter(Boolean)[0] || '';\n}\n\nconst DONE_STATUSES = new Set(['Applied', 'Contacted', 'Skip']);\nfunction normalizeStatus(s) {\n  const raw = String(s || '').trim();\n  const map = {\n    applied: 'Applied', contacted: 'Contacted', skip: 'Skip', skipped: 'Skip',\n    watch: 'Watch', 'ready to apply': 'Ready to Apply', ready: 'Ready to Apply',\n  };\n  return map[raw.toLowerCase()] || raw || 'Watch';\n}\nfunction isDoneStatus(status) {\n  return DONE_STATUSES.has(normalizeStatus(status));\n}\n\nfunction assignAction(row) {\n  const status = normalizeStatus(row.status);\n  if (status === 'Applied') {\n    return { ...row, status, next_action: 'Applied', next_action_url: firstJobUrl(row) || row.careers_url || row.website || '' };\n  }\n  if (status === 'Contacted') {\n    return { ...row, status, next_action: 'Contacted', next_action_url: row.apply_email ? `mailto:${row.apply_email}` : (row.careers_url || row.website || '') };\n  }\n  if (status === 'Skip') {\n    return { ...row, status, next_action: 'Skip', next_action_url: '' };\n  }\n  const job0 = firstJobUrl(row);\n  if (row.hiring_pm === 'Yes' && (job0 || row.careers_url || row.apply_email)) {\n    const next_action_url = job0 || row.careers_url || (row.apply_email ? `mailto:${row.apply_email}` : row.website || '');\n    return { ...row, status: status === 'Ready to Apply' ? status : 'Ready to Apply', next_action: 'Apply now', next_action_url };\n  }\n  if ((row.priority === 'High' || row.priority === 'Medium') && (row.website || row.careers_url || row.apply_email)) {\n    const next_action_url = row.apply_email\n      ? `mailto:${row.apply_email}`\n      : (row.careers_url || row.website || '');\n    return { ...row, status: status || 'Watch', next_action: 'Find contact', next_action_url };\n  }\n  return { ...row, status: status || 'Watch', next_action: 'Watch', next_action_url: row.careers_url || row.website || '' };\n}\n\nfunction scoreTargetRow(row) {\n  let score = 40;\n  const l = String(row.location || '').toLowerCase();\n  if (/\\b(berlin|potsdam)\\b/.test(l)) score += 25;\n  else if (/\\b(munich|münchen|hamburg|cologne|köln|frankfurt)\\b/.test(l)) score += 15;\n  else if (l) score += 5;\n  const s = String(row.funding_stage || '').toLowerCase();\n  if (/pre[-\\s]?seed|seed/.test(s)) score += 20;\n  else if (/series\\s*a/.test(s)) score += 18;\n  else if (/series\\s*b/.test(s)) score += 12;\n  else if (/series\\s*c/.test(s)) score += 4;\n  else if (/series\\s*[def]|growth|d\\+/.test(s)) score -= 8;\n  else score += 6;\n  const hiring = String(row.hiring_pm || 'Unknown');\n  if (hiring === 'Yes') score += 30;\n  else if (hiring === 'No') score -= 10;\n  const titles = String(row.pm_job_titles || '');\n  if (/\\bproduct (manager|owner)\\b/i.test(titles)) score += 15;\n  if (row.apply_email) score += 8;\n  if (row.careers_url) score += 4;\n  const blurb = `${row.one_liner || ''} ${row.notes || ''}`.toLowerCase();\n  if (/\\b(hardware|robotics|deeptech|semiconductor|battery|fusion)\\b/.test(blurb) && hiring !== 'Yes') score -= 8;\n  if (/\\b(saas|b2b|ai|software|platform|marketplace)\\b/.test(blurb)) score += 6;\n  score = Math.max(0, Math.min(100, Math.round(score)));\n  let priority = score >= 70 ? 'High' : score < 45 ? 'Low' : 'Medium';\n  // status from sheet is sticky for Applied / Contacted / Skip\n  let status = normalizeStatus(row.status || 'Watch');\n  if (!isDoneStatus(status)) {\n    if (priority === 'High' && hiring === 'Yes') status = 'Ready to Apply';\n  }\n  return assignAction({ ...row, priority_score: String(score), priority, status });\n}\n\nfunction mergeTargetRows(existing, incoming) {\n  if (!existing) return { ...incoming };\n  const out = { ...existing };\n  for (const f of ['location','one_liner','funding_stage','funding_amount','funding_date','total_raised_note']) {\n    if (incoming[f]) out[f] = incoming[f];\n  }\n  if (incoming.source && existing.source && incoming.source !== existing.source) out.source = 'both';\n  else if (incoming.source) out.source = existing.source && existing.source !== incoming.source ? 'both' : incoming.source;\n  if (incoming.last_funded_check) out.last_funded_check = incoming.last_funded_check;\n  if (incoming.notes && !String(existing.notes || '').includes(incoming.notes)) {\n    out.notes = [existing.notes, incoming.notes].filter(Boolean).join(' | ').slice(0, 500);\n  }\n  // Enrich fields only — never overwrite sticky sheet status / action from funding imports\n  for (const f of ['website','linkedin_url','careers_url','apply_email','hiring_pm','pm_job_urls','pm_job_titles','last_hiring_check','last_draft_at']) {\n    if (incoming[f] !== undefined && incoming[f] !== '' && incoming[f] != null) out[f] = incoming[f];\n  }\n  out.status = normalizeStatus(existing.status || out.status || 'Watch');\n  return out;\n}\n\nfunction parseCsv(text) {\n  const rows = []; let i = 0; let field = ''; let row = []; let inQuotes = false;\n  while (i < text.length) {\n    const c = text[i];\n    if (inQuotes) {\n      if (c === '\"') { if (text[i+1] === '\"') { field += '\"'; i += 2; continue; } inQuotes = false; i++; continue; }\n      field += c; i++; continue;\n    }\n    if (c === '\"') { inQuotes = true; i++; continue; }\n    if (c === ',') { row.push(field); field = ''; i++; continue; }\n    if (c === '\\n' || c === '\\r') {\n      if (c === '\\r' && text[i+1] === '\\n') i++;\n      row.push(field); rows.push(row); row = []; field = ''; i++; continue;\n    }\n    field += c; i++;\n  }\n  if (field.length || row.length) { row.push(field); rows.push(row); }\n  if (!rows.length) return [];\n  const headers = rows[0].map(h => String(h || '').trim());\n  return rows.slice(1).filter(cols => cols.some(Boolean)).map(cols => {\n    const obj = {}; headers.forEach((h, idx) => { obj[h] = cols[idx] ?? ''; }); return obj;\n  });\n}\n\nasync function headOk(url) {\n  try {\n    const res = await this.helpers.httpRequest({\n      method: 'GET', url, timeout: 4000, returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n      headers: { 'User-Agent': 'n8n-startup-targets/1.0' },\n    });\n    const code = res.statusCode || res.status || 0;\n    return code >= 200 && code < 400;\n  } catch (e) { return false; }\n}\n\n// --- load existing sheet rows ---\nconst sheetItems = $('📊 Read Target Companies').all().map(i => i.json).filter(j => {\n  const c = String(j?.company || j?.Company || '').trim().toLowerCase();\n  return c && c !== 'company' && c !== 'name';\n});\nconst existing = sheetItems.map(j => emptyRow({\n  company: j.company || j.Company || '',\n  location: j.location || j.Location || '',\n  one_liner: j.one_liner || j['What they do'] || '',\n  funding_stage: j.funding_stage || '',\n  funding_amount: j.funding_amount || '',\n  funding_date: j.funding_date || '',\n  total_raised_note: j.total_raised_note || j.Funding || '',\n  source: j.source || 'sheet',\n  website: j.website || '',\n  linkedin_url: j.linkedin_url || '',\n  careers_url: j.careers_url || '',\n  apply_email: j.apply_email || '',\n  next_action: j.next_action || 'Watch',\n  next_action_url: j.next_action_url || '',\n  hiring_pm: j.hiring_pm || 'Unknown',\n  pm_job_urls: j.pm_job_urls || '',\n  pm_job_titles: j.pm_job_titles || '',\n  priority: j.priority || 'Medium',\n  priority_score: String(j.priority_score || '50'),\n  status: normalizeStatus(j.status || 'Watch'),\n  last_funded_check: j.last_funded_check || '',\n  last_hiring_check: j.last_hiring_check || '',\n  last_draft_at: j.last_draft_at || '',\n  notes: j.notes || '',\n}));\n\nconst byKey = new Map();\nfor (const r of existing) {\n  const k = normalizeCompanyKey(r.company);\n  if (k) byKey.set(k, r);\n}\nconst beforeKeys = new Set(byKey.keys());\n\n// --- seed CSV ---\nconst seedNode = $('🌐 Maybe Fetch Seed CSV').first();\nconst seedStr = (() => {\n  const j = seedNode.json;\n  if (typeof j === 'string') return j;\n  if (typeof j.data === 'string') return j.data;\n  if (typeof j.body === 'string') return j.body;\n  const vals = Object.values(j || {});\n  if (vals.length === 1 && typeof vals[0] === 'string' && vals[0].includes('Company')) return vals[0];\n  return String(j?.content || '');\n})();\n\nconst importSeed = forceSeed || byKey.size === 0;\nlet seedImported = 0;\nif (!seedStr || seedStr.length < 20) {\n  console.log('Seed CSV empty or unreadable — skipping seed import');\n}\nif (importSeed && seedStr && seedStr.includes(',')) {\n  for (const s of parseCsv(seedStr)) {\n    const company = s.Company || s.company || '';\n    if (!company.trim()) continue;\n    const parsed = parseFundingBlob(s.Funding || s.funding || '');\n    const incoming = emptyRow({\n      company: company.trim(),\n      location: (s.Location || s.location || '').trim(),\n      one_liner: (s['What they do'] || s.one_liner || '').trim(),\n      funding_stage: parsed.funding_stage,\n      funding_amount: parsed.funding_amount,\n      total_raised_note: parsed.total_raised_note,\n      source: 'seed_sheet',\n      last_funded_check: today,\n    });\n    const key = normalizeCompanyKey(company);\n    byKey.set(key, scoreTargetRow(mergeTargetRows(byKey.get(key), incoming)));\n    seedImported++;\n  }\n}\n\n// --- Tech.eu rounds ---\nconst techBody = $('🌐 Fetch Tech.eu Rounds').first().json || {};\nconst rounds = Array.isArray(techBody?.data) ? techBody.data : (Array.isArray(techBody) ? techBody : []);\nif (!rounds.length) {\n  console.log('Tech.eu empty/rate-limited:', techBody?.message || techBody?.error || 'no data');\n}\nconst latestByCompany = new Map();\nfor (const round of rounds) {\n  const name = round?.company?.name;\n  if (!name) continue;\n  const key = normalizeCompanyKey(name);\n  const prev = latestByCompany.get(key);\n  if (!prev || String(round.date) > String(prev.date)) latestByCompany.set(key, round);\n}\nlet fundingTouched = 0;\nfor (const round of latestByCompany.values()) {\n  const company = round.company || {};\n  const amount = formatAmountEur(round.amountEur);\n  const stage = round.stage || round.rawRoundType || '';\n  const incoming = emptyRow({\n    company: String(company.name || '').trim(),\n    location: String(company.city || company.country || '').trim(),\n    one_liner: Array.isArray(company.sectors) ? company.sectors.join(', ') : '',\n    funding_stage: stage,\n    funding_amount: amount,\n    funding_date: round.date || '',\n    total_raised_note: [amount, stage, round.date].filter(Boolean).join(' · '),\n    source: 'tech.eu',\n    last_funded_check: today,\n    notes: round.source?.domain ? `tech.eu via ${round.source.domain}` : 'tech.eu',\n  });\n  const key = normalizeCompanyKey(incoming.company);\n  byKey.set(key, scoreTargetRow(mergeTargetRows(byKey.get(key), incoming)));\n  fundingTouched++;\n}\n\n// --- enrich websites (capped) ---\nlet rows = [...byKey.values()];\nconst HARD_ENRICH_CAP = Math.min(maxEnrich, 5);\nconst enrichQueue = rows\n  .filter(r => (!r.website || !r.careers_url) && (r.last_funded_check === today || (r.source || '').includes('tech.eu')))\n  .slice(0, HARD_ENRICH_CAP);\nlet enriched = 0;\nfor (const r of enrichQueue) {\n  const slug = normalizeCompanyKey(r.company).replace(/\\s+/g, '');\n  if (!slug) continue;\n  const siteCands = [`https://www.${slug}.com`,`https://${slug}.com`,`https://www.${slug}.io`,`https://${slug}.io`,`https://www.${slug}.de`,`https://${slug}.de`,`https://www.${slug}.ai`,`https://${slug}.ai`];\n  let website = r.website;\n  if (!website) {\n    for (const u of siteCands) {\n      if (await headOk.call(this, u)) { website = u; break; }\n    }\n  }\n  let careers = r.careers_url;\n  if (website && !careers) {\n    const base = website.replace(/\\/$/, '');\n    for (const u of [`${base}/careers`,`${base}/jobs`,`${base}/career`,`${base}/en/careers`,`${base}/join`]) {\n      if (await headOk.call(this, u)) { careers = u; break; }\n    }\n  }\n  if (website || careers) {\n    const key = normalizeCompanyKey(r.company);\n    const cur = byKey.get(key);\n    byKey.set(key, { ...cur, website: website || cur.website, careers_url: careers || cur.careers_url });\n    enriched++;\n  }\n}\n\nrows = [...byKey.values()].map(scoreTargetRow);\nconst newlyAdded = rows.filter(r => !beforeKeys.has(normalizeCompanyKey(r.company)));\n\nreturn [{\n  json: {\n    rows,\n    newlyAddedCount: newlyAdded.length,\n    newlyAdded: newlyAdded.slice(0, 30),\n    fundingTouched,\n    seedImported,\n    enriched,\n    companyCount: rows.length,\n    lookback,\n    hiringCheckEnabled: String(cfg.hiringCheckEnabled || 'true') !== 'false',\n    sheetUrl: cfg.sheetUrl || '',\n    yourEmail: cfg.yourEmail || '',\n  }\n}];\n"
+      },
+      "id": "st-merge",
+      "name": "🧠 Merge Enrich Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst summary = $input.first().json;\nconst rows = summary.rows || [];\nif (!rows.length) {\n  return [{ json: { ...summary, _empty: true, company: '', _summary: true } }];\n}\nconst out = rows.map(r => ({ json: { ...r, _summary: false } }));\nout[0].json._digestHtml = summary.digestHtml;\nout[0].json._companyCount = summary.companyCount;\nout[0].json._newlyAddedCount = summary.newlyAddedCount;\nout[0].json._hiringYes = summary.hiringYes;\nout[0].json._applyNow = summary.applyNow;\nout[0].json._findContact = summary.findContact;\nout[0].json._draftsCreated = summary.draftsCreated;\nout[0].json._readyToApply = summary.readyToApply;\nout[0].json._yourEmail = summary.yourEmail;\nout[0].json._sheetUrl = summary.sheetUrl;\nout.push({ json: {\n  _summary: true,\n  digestHtml: summary.digestHtml,\n  companyCount: summary.companyCount,\n  newlyAddedCount: summary.newlyAddedCount,\n  hiringYes: summary.hiringYes,\n  applyNow: summary.applyNow,\n  findContact: summary.findContact,\n  draftsCreated: summary.draftsCreated,\n  draftCandidates: summary.draftCandidates,\n  readyToApply: summary.readyToApply,\n  yourEmail: summary.yourEmail,\n  sheetUrl: summary.sheetUrl,\n  fundingTouched: summary.fundingTouched,\n}});\nreturn out;\n"
+      },
+      "id": "st-expand",
+      "name": "📤 Expand Rows For Sheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "s1",
+              "leftValue": "={{ $json._summary }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "st-if-summary",
+      "name": "❓ Is Summary Item?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2920,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst HEADERS = [\"company\",\"location\",\"one_liner\",\"funding_stage\",\"funding_amount\",\"funding_date\",\"total_raised_note\",\"source\",\"website\",\"linkedin_url\",\"careers_url\",\"apply_email\",\"next_action\",\"next_action_url\",\"hiring_pm\",\"pm_job_urls\",\"pm_job_titles\",\"priority\",\"priority_score\",\"status\",\"last_funded_check\",\"last_hiring_check\",\"last_draft_at\",\"notes\"];\n\nconst LEGAL = /\\b(gmbh|ug|ag|se|kg|ohg|gbr|inc|incorporated|ltd|limited|llc|corp|corporation|co|company|holding|holdings|group|sa|bv|nv)\\b/gi;\nfunction normalizeCompanyKey(name) {\n  return String(name || '').toLowerCase().normalize('NFKD')\n    .replace(/[\\u0300-\\u036f]/g, '').replace(/&/g, ' and ')\n    .replace(LEGAL, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nfunction pickBetter(a, b) {\n  const da = String(a.funding_date || '');\n  const db = String(b.funding_date || '');\n  if (db && (!da || db > da)) return { ...a, ...b, company: a.company || b.company };\n  if (da && (!db || da > db)) return { ...b, ...a, company: a.company || b.company };\n  const out = { ...a };\n  for (const [k, v] of Object.entries(b)) {\n    if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = v;\n  }\n  if ((b.company || '').length > (a.company || '').length) out.company = b.company;\n  else out.company = a.company || b.company;\n  return out;\n}\n\nconst items = $('📤 Expand Rows For Sheet').all()\n  .filter(i => !i.json._summary && i.json.company)\n  .filter(i => {\n    const c = String(i.json.company || '').trim().toLowerCase();\n    return c && c !== 'company' && c !== 'name';\n  });\n\nif (!items.length) return [{ json: { company: '', _empty: true } }];\n\nconst byKey = new Map();\nfor (const item of items) {\n  const row = item.json;\n  const key = normalizeCompanyKey(row.company);\n  if (!key) continue;\n  if (!byKey.has(key)) byKey.set(key, { ...row });\n  else byKey.set(key, pickBetter(byKey.get(key), row));\n}\n\nconst rows = [...byKey.values()].sort((a, b) => {\n  // Action queue first; done statuses sink to bottom\n  const rank = (r) => ({ 'Apply now': 0, 'Find contact': 1, Watch: 2, Contacted: 3, Applied: 4, Skip: 5 }[r.next_action] ?? 6);\n  const ra = rank(a);\n  const rb = rank(b);\n  if (ra !== rb) return ra - rb;\n  const sa = Number(a.priority_score || 0);\n  const sb = Number(b.priority_score || 0);\n  if (sb !== sa) return sb - sa;\n  const da = String(a.funding_date || '');\n  const db = String(b.funding_date || '');\n  if (db !== da) return db.localeCompare(da);\n  return String(a.company || '').localeCompare(String(b.company || ''));\n});\n\nconsole.log(`Sheet write: ${items.length} in → ${rows.length} unique, action-queue first`);\n\nreturn rows.map(r => {\n  const out = {};\n  for (const h of HEADERS) out[h] = r[h] ?? '';\n  return { json: out };\n});\n"
+      },
+      "id": "st-prep-append",
+      "name": "📋 Prep Sheet Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3400,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSpreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "one_liner",
+              "displayName": "one_liner",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "funding_stage",
+              "displayName": "funding_stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "funding_amount",
+              "displayName": "funding_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "funding_date",
+              "displayName": "funding_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "total_raised_note",
+              "displayName": "total_raised_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "linkedin_url",
+              "displayName": "linkedin_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "careers_url",
+              "displayName": "careers_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "apply_email",
+              "displayName": "apply_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "next_action",
+              "displayName": "next_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "next_action_url",
+              "displayName": "next_action_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "hiring_pm",
+              "displayName": "hiring_pm",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "pm_job_urls",
+              "displayName": "pm_job_urls",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "pm_job_titles",
+              "displayName": "pm_job_titles",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "priority_score",
+              "displayName": "priority_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_funded_check",
+              "displayName": "last_funded_check",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_hiring_check",
+              "displayName": "last_hiring_check",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_draft_at",
+              "displayName": "last_draft_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "st-append",
+      "name": "📊 Rewrite Target Companies",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3880,
+        560
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qr9Hp2MtzkKsQ3WO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.yourEmail || $('⚙️ Config').first().json.digestEmails || $('⚙️ Config').first().json.yourEmail }}",
+        "subject": "=🇩🇪 Action queue — {{ $json.applyNow || 0 }} apply · {{ $json.findContact || 0 }} find contact · {{ $json.draftsCreated || 0 }} drafts · {{ $now.toFormat('MMM d, yyyy') }}",
+        "message": "={{ $json.digestHtml }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "st-gmail",
+      "name": "📧 Email Digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3160,
+        240
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "u2pr9rKiXbazj7bS",
+          "name": "Gmail account"
+        }
+      },
+      "webhookId": "ffadb3d9-71be-4e8f-8c23-0e9312ce6d54"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSpreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.targetsMetaSheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "key": "last_run",
+            "value": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "key"
+          ],
+          "schema": [
+            {
+              "id": "key",
+              "displayName": "key",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "st-meta",
+      "name": "📊 Update last_run Meta",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3400,
+        240
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qr9Hp2MtzkKsQ3WO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "st-noop-rows",
+      "name": "⏭ Non-summary Rows Ignored",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3160,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "startup-targets-bootstrap",
+        "options": {}
+      },
+      "id": "st-webhook",
+      "name": "🚀 Bootstrap Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        120
+      ],
+      "webhookId": "startup-targets-bootstrap"
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSpreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Config').first().json.startupTargetsSheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "st-clear-targets",
+      "name": "🧹 Clear Target Companies",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3400,
+        560
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "qr9Hp2MtzkKsQ3WO",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// After clear, re-emit deduped rows from Prep (plus header row)\nconst HEADERS = [\"company\",\"location\",\"one_liner\",\"funding_stage\",\"funding_amount\",\"funding_date\",\"total_raised_note\",\"source\",\"website\",\"linkedin_url\",\"careers_url\",\"apply_email\",\"next_action\",\"next_action_url\",\"hiring_pm\",\"pm_job_urls\",\"pm_job_titles\",\"priority\",\"priority_score\",\"status\",\"last_funded_check\",\"last_hiring_check\",\"last_draft_at\",\"notes\"];\nconst header = Object.fromEntries(HEADERS.map(h => [h, h]));\nconst rows = $('📋 Prep Sheet Rows').all().filter(i => i.json.company && !i.json._empty);\nreturn [{ json: header }, ...rows.map(i => ({ json: i.json }))];\n"
+      },
+      "id": "st-reemit",
+      "name": "📋 Re-emit Rows After Clear",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst cfg = $('⚙️ Config').first().json;\nconst prev = $('🧠 Merge Enrich Score').first().json;\nlet rows = (prev.rows || []).map(r => ({ ...r }));\nconst today = new Date().toISOString().slice(0, 10);\nconst lookback = Number(prev.lookback || cfg.techEuLookbackDays || 14);\nconst hiringEnabled = String(cfg.hiringCheckEnabled || 'true') !== 'false';\nconst maxChecks = Math.min(Number(cfg.maxHiringChecksPerRun || 25), 40);\n\nconst LEGAL = /\\b(gmbh|ug|ag|se|kg|ohg|gbr|inc|incorporated|ltd|limited|llc|corp|corporation|co|company|holding|holdings|group|sa|bv|nv)\\b/gi;\nfunction normalizeCompanyKey(name) {\n  return String(name || '').toLowerCase().normalize('NFKD')\n    .replace(/[\\u0300-\\u036f]/g, '').replace(/&/g, ' and ')\n    .replace(LEGAL, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\\s+/g, ' ').trim();\n}\nfunction daysSince(iso) {\n  if (!iso) return Infinity;\n  const t = Date.parse(iso);\n  if (Number.isNaN(t)) return Infinity;\n  return (Date.now() - t) / 86400000;\n}\nfunction esc(s) {\n  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n}\n\nasync function fetchText(url, timeout = 5000) {\n  try {\n    const res = await this.helpers.httpRequest({\n      method: 'GET',\n      url,\n      timeout,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n      headers: {\n        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',\n        'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',\n        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',\n      },\n    });\n    const code = res.statusCode || res.status || 0;\n    const body = typeof res.body === 'string' ? res.body : (res.data || '');\n    if (code >= 200 && code < 400 && body) return String(body);\n  } catch (e) { /* ignore */ }\n  return '';\n}\n\nfunction careersLooksLive(html) {\n  if (!html || html.length < 200) return false;\n  const h = html.toLowerCase();\n  const blockers = ['page not found', '404', 'job board is empty', 'no open positions', 'no vacancies', 'currently no openings'];\n  if (blockers.some(b => h.includes(b)) && !/(job|stelle|position|role)/i.test(h)) return false;\n  const signals = [\n    'greenhouse.io', 'lever.co', 'personio', 'workable.com', 'ashbyhq.com', 'smartrecruiters',\n    'join.com', 'recruitee', 'jobvite', 'open position', 'open roles', 'we are hiring',\n    \"we're hiring\", 'stellengesuch', 'stellenangebot', 'karriere', 'job openings',\n    'view job', 'apply now', 'alle stellen', 'offene stellen', 'data-job', 'job-card',\n  ];\n  return signals.some(s => h.includes(s));\n}\n\nconst EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g;\nconst MAILTO_RE = /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})/gi;\nconst PREFERRED_LOCAL = /^(jobs|careers|talent|people|hr|join|hiring|work|recruiting|bewerbung|karriere)@/i;\nconst BAD_EMAIL = /(noreply|no-reply|donotreply|privacy|legal|newsletter|marketing|sentry\\.io|wixpress|example\\.com|domain\\.com|schema\\.org|png$|jpg$|gif$|svg$|webp$)/i;\n\nfunction extractApplyEmail(html) {\n  const found = new Set();\n  const text = String(html || '');\n  for (const m of text.matchAll(MAILTO_RE)) found.add(m[1].toLowerCase());\n  for (const m of text.matchAll(EMAIL_RE)) found.add(m[0].toLowerCase());\n  const emails = [...found].filter(e => !BAD_EMAIL.test(e) && e.includes('.') && e.length < 80);\n  const preferred = emails.filter(e => PREFERRED_LOCAL.test(e));\n  if (preferred.length) return preferred[0];\n  const nonFree = emails.filter(e => !/@(gmail|googlemail|yahoo|hotmail|outlook|icloud)\\./i.test(e));\n  return nonFree[0] || emails[0] || '';\n}\n\nfunction firstJobUrl(row) {\n  return String(row.pm_job_urls || '').split(' | ').map(s => s.trim()).filter(Boolean)[0] || '';\n}\n\nconst DONE_STATUSES = new Set(['Applied', 'Contacted', 'Skip']);\nfunction normalizeStatus(s) {\n  const raw = String(s || '').trim();\n  const map = {\n    applied: 'Applied', contacted: 'Contacted', skip: 'Skip', skipped: 'Skip',\n    watch: 'Watch', 'ready to apply': 'Ready to Apply', ready: 'Ready to Apply',\n  };\n  return map[raw.toLowerCase()] || raw || 'Watch';\n}\nfunction isDoneStatus(status) {\n  return DONE_STATUSES.has(normalizeStatus(status));\n}\n\nfunction assignAction(row) {\n  const status = normalizeStatus(row.status);\n  if (status === 'Applied') {\n    return { ...row, status, next_action: 'Applied', next_action_url: firstJobUrl(row) || row.careers_url || row.website || '' };\n  }\n  if (status === 'Contacted') {\n    return { ...row, status, next_action: 'Contacted', next_action_url: row.apply_email ? `mailto:${row.apply_email}` : (row.careers_url || row.website || '') };\n  }\n  if (status === 'Skip') {\n    return { ...row, status, next_action: 'Skip', next_action_url: '' };\n  }\n  const job0 = firstJobUrl(row);\n  if (row.hiring_pm === 'Yes' && (job0 || row.careers_url || row.apply_email)) {\n    const next_action_url = job0 || row.careers_url || (row.apply_email ? `mailto:${row.apply_email}` : row.website || '');\n    return { ...row, status: 'Ready to Apply', next_action: 'Apply now', next_action_url };\n  }\n  if ((row.priority === 'High' || row.priority === 'Medium') && (row.website || row.careers_url || row.apply_email)) {\n    const next_action_url = row.apply_email\n      ? `mailto:${row.apply_email}`\n      : (row.careers_url || row.website || '');\n    return { ...row, status: status || 'Watch', next_action: 'Find contact', next_action_url };\n  }\n  return { ...row, status: status || 'Watch', next_action: 'Watch', next_action_url: row.careers_url || row.website || '' };\n}\n\nfunction scoreTargetRow(row) {\n  let score = 40;\n  const l = String(row.location || '').toLowerCase();\n  if (/\\b(berlin|potsdam)\\b/.test(l)) score += 25;\n  else if (/\\b(munich|münchen|hamburg|cologne|köln|frankfurt)\\b/.test(l)) score += 15;\n  else if (l) score += 5;\n  const s = String(row.funding_stage || '').toLowerCase();\n  if (/pre[-\\s]?seed|seed/.test(s)) score += 20;\n  else if (/series\\s*a/.test(s)) score += 18;\n  else if (/series\\s*b/.test(s)) score += 12;\n  else if (/series\\s*c/.test(s)) score += 4;\n  else if (/series\\s*[def]|growth|d\\+/.test(s)) score -= 8;\n  else score += 6;\n  const hiring = String(row.hiring_pm || 'Unknown');\n  if (hiring === 'Yes') score += 30;\n  else if (hiring === 'No') score -= 10;\n  if (/\\bproduct (manager|owner)\\b/i.test(String(row.pm_job_titles || ''))) score += 15;\n  if (row.apply_email) score += 8;\n  if (row.careers_url) score += 4;\n  const blurb = `${row.one_liner || ''} ${row.notes || ''}`.toLowerCase();\n  if (/\\b(hardware|robotics|deeptech|semiconductor|battery|fusion)\\b/.test(blurb) && hiring !== 'Yes') score -= 8;\n  if (/\\b(saas|b2b|ai|software|platform|marketplace)\\b/.test(blurb)) score += 6;\n  score = Math.max(0, Math.min(100, Math.round(score)));\n  let priority = score >= 70 ? 'High' : score < 45 ? 'Low' : 'Medium';\n  let status = normalizeStatus(row.status || 'Watch');\n  if (!isDoneStatus(status)) {\n    if (priority === 'High' && hiring === 'Yes') status = 'Ready to Apply';\n  }\n  return assignAction({ ...row, priority_score: String(score), priority, status });\n}\n\nfunction parseLinkedInGuest(html, company) {\n  const titles = [];\n  const urls = [];\n  const key = normalizeCompanyKey(company);\n  const blocks = String(html || '').split(/<\\/li>/i);\n  for (const block of blocks) {\n    const id = (block.match(/data-entity-urn=\"urn:li:jobPosting:(\\d+)\"/) || block.match(/\\/jobs\\/view\\/(\\d+)/) || [])[1];\n    if (!id) continue;\n    const title = ((block.match(/base-search-card__title[^>]*>\\s*([^<]+)/i) || [])[1] || '').trim();\n    const comp = ((block.match(/base-search-card__subtitle[^>]*>[\\s\\S]*?<[^>]+>\\s*([^<]+)/i) || block.match(/base-search-card__subtitle[^>]*>\\s*([^<]+)/i) || [])[1] || '').trim();\n    const compKey = normalizeCompanyKey(comp);\n    if (!compKey) continue;\n    if (!(compKey.includes(key) || key.includes(compKey) || key.split(' ').some(p => p.length > 3 && compKey.includes(p)))) {\n      continue;\n    }\n    if (title && titles.length < 5) titles.push(title.replace(/\\s+/g, ' '));\n    const u = `https://www.linkedin.com/jobs/view/${id}/`;\n    if (urls.length < 3) urls.push(u);\n  }\n  return { titles, urls };\n}\n\nconst newlyNames = new Set((prev.newlyAdded || []).map(r => normalizeCompanyKey(r.company)));\nconst latestIdx = [];\nrows.forEach((r, i) => {\n  const k = normalizeCompanyKey(r.company);\n  if (newlyNames.has(k) || (r.funding_date && daysSince(r.funding_date) <= lookback) ||\n      (r.last_funded_check === today && String(r.source || '').includes('tech.eu'))) {\n    latestIdx.push(i);\n  }\n});\n\nlet checked = 0;\nlet liHits = 0;\nlet careersHits = 0;\nlet emailHits = 0;\n\nif (hiringEnabled) {\n  for (const i of latestIdx.slice(0, maxChecks)) {\n    const r = rows[i];\n    checked++;\n    let hiring = r.hiring_pm || 'Unknown';\n    let titles = r.pm_job_titles || '';\n    let urls = r.pm_job_urls || '';\n    let careers = r.careers_url || '';\n    let website = r.website || '';\n    let applyEmail = r.apply_email || '';\n    const htmlCache = [];\n\n    // 1) Careers / jobs page (free)\n    const careerCands = [];\n    if (careers) careerCands.push(careers);\n    if (website) {\n      const baseUrl = website.replace(/\\/$/, '');\n      careerCands.push(`${baseUrl}/careers`, `${baseUrl}/jobs`, `${baseUrl}/career`, `${baseUrl}/en/careers`, `${baseUrl}/join`);\n    }\n    for (const u of [...new Set(careerCands)].slice(0, 2)) {\n      const html = await fetchText.call(this, u);\n      if (!html) continue;\n      htmlCache.push(html);\n      if (careersLooksLive(html)) {\n        careers = careers || u;\n        hiring = 'Yes';\n        careersHits++;\n        if (!titles) titles = 'Open roles on careers page';\n        break;\n      }\n    }\n\n    // 2) LinkedIn Guest API (free, no Apify)\n    const liUrl = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(r.company)}&location=Germany&f_TPR=r1209600&start=0`;\n    const liHtml = await fetchText.call(this, liUrl, 6000);\n    if (liHtml) {\n      const parsed = parseLinkedInGuest(liHtml, r.company);\n      if (parsed.titles.length) {\n        hiring = 'Yes';\n        liHits++;\n        titles = parsed.titles.join(' | ');\n        urls = parsed.urls.join(' | ');\n      } else if (hiring !== 'Yes') {\n        hiring = hiring || 'Unknown';\n      }\n    }\n\n    // 3) Contact / apply email from careers + contact/impressum pages\n    if (!applyEmail) {\n      for (const html of htmlCache) {\n        applyEmail = extractApplyEmail(html);\n        if (applyEmail) break;\n      }\n    }\n    if (!applyEmail && website) {\n      const base = website.replace(/\\/$/, '');\n      for (const u of [`${base}/contact`, `${base}/contact-us`, `${base}/impressum`, `${base}/about`, website]) {\n        const html = await fetchText.call(this, u, 4000);\n        if (!html) continue;\n        applyEmail = extractApplyEmail(html);\n        if (applyEmail) break;\n      }\n    }\n    if (applyEmail) emailHits++;\n\n    rows[i] = scoreTargetRow({\n      ...r,\n      website,\n      careers_url: careers,\n      apply_email: applyEmail,\n      hiring_pm: hiring,\n      pm_job_titles: titles,\n      pm_job_urls: urls,\n      last_hiring_check: today,\n    });\n  }\n}\n\n// Re-score all rows so action fields stay consistent\nrows = rows.map(scoreTargetRow);\n\nconst latest = latestIdx.map(i => rows[i])\n  .sort((a, b) => String(b.funding_date || '').localeCompare(String(a.funding_date || '')));\n\nconst applyNow = rows\n  .filter(r => !isDoneStatus(r.status) && r.next_action === 'Apply now')\n  .sort((a, b) => Number(b.priority_score || 0) - Number(a.priority_score || 0));\nconst findContact = rows\n  .filter(r => !isDoneStatus(r.status) && r.next_action === 'Find contact')\n  .sort((a, b) => Number(b.priority_score || 0) - Number(a.priority_score || 0));\nconst latestOpen = latest.filter(r => !isDoneStatus(r.status));\nconst doneCount = rows.filter(r => isDoneStatus(r.status)).length;\nconst hiringYes = latestOpen.filter(r => r.hiring_pm === 'Yes');\nconst readyToApply = applyNow.length;\n\nfunction renderActionItem(r) {\n  const amount = [r.funding_amount, r.funding_stage, r.funding_date].filter(Boolean).join(' · ');\n  const links = [];\n  if (r.next_action_url) {\n    const label = String(r.next_action_url).startsWith('mailto:') ? 'Email' : 'Open';\n    links.push(`<a href=\"${esc(r.next_action_url)}\"><b>${label}</b></a>`);\n  }\n  if (r.pm_job_urls) {\n    const job0 = firstJobUrl(r);\n    if (job0 && job0 !== r.next_action_url) links.push(`<a href=\"${esc(job0)}\">Job</a>`);\n  }\n  if (r.careers_url && r.careers_url !== r.next_action_url) links.push(`<a href=\"${esc(r.careers_url)}\">Careers</a>`);\n  if (r.website && r.website !== r.next_action_url) links.push(`<a href=\"${esc(r.website)}\">Website</a>`);\n  if (r.apply_email) links.push(`<a href=\"mailto:${esc(r.apply_email)}\">${esc(r.apply_email)}</a>`);\n  return (\n    `<li style=\"margin-bottom:12px\"><b>${esc(r.company)}</b> [${esc(r.priority)} · ${esc(r.priority_score)}]` +\n    ` — ${esc(amount || r.total_raised_note || 'funding update')}` +\n    `<br><span style=\"color:#555\">${esc(r.location || 'Germany')}${r.one_liner ? ' · ' + esc(r.one_liner) : ''}</span>` +\n    (r.pm_job_titles ? `<br>Roles: ${esc(r.pm_job_titles)}` : '') +\n    (links.length ? `<br>${links.join(' · ')}` : '<br><span style=\"color:#999\">No apply link yet</span>') +\n    `</li>`\n  );\n}\n\nconst lines = [];\nlines.push('<h2>Startup action queue</h2>');\nif (prev.sheetUrl) lines.push(`<p><a href=\"${esc(prev.sheetUrl)}\">Open sheet</a> — after you act, set <b>status</b> to <b>Applied</b>, <b>Contacted</b>, or <b>Skip</b> so it drops out of the next email.</p>`);\nlines.push(`<p>Lookback <b>${lookback}</b> days · Open funding updates: <b>${latestOpen.length}</b> · Hidden (Applied/Contacted/Skip): <b>${doneCount}</b> · Checks: <b>${checked}</b> · Emails found: <b>${emailHits}</b></p>`);\nlines.push('<p style=\"color:#666\">Do these first. Status in the sheet is sticky across runs.</p>');\n\nlines.push(`<h3>1) Apply now (${applyNow.length})</h3>`);\nif (!applyNow.length) {\n  lines.push('<p>None this run — no clear job/careers path yet.</p>');\n} else {\n  lines.push('<ol>');\n  for (const r of applyNow.slice(0, 20)) lines.push(renderActionItem(r));\n  lines.push('</ol>');\n}\n\nlines.push(`<h3>2) Find contact (${findContact.length})</h3>`);\nif (!findContact.length) {\n  lines.push('<p>None this run.</p>');\n} else {\n  lines.push('<ol>');\n  for (const r of findContact.slice(0, 15)) lines.push(renderActionItem(r));\n  lines.push('</ol>');\n}\n\nlines.push(`<h3>3) Latest funding updates (${latestOpen.length})</h3>`);\nif (!latestOpen.length) {\n  lines.push('<p>No open Tech.eu Germany rounds in this window (or all already Applied/Contacted/Skip).</p>');\n} else {\n  lines.push('<ul>');\n  for (const r of latestOpen.slice(0, 25)) {\n    const amount = [r.funding_amount, r.funding_stage, r.funding_date].filter(Boolean).join(' · ');\n    lines.push(\n      `<li><b>${esc(r.company)}</b> — ${esc(amount || 'update')} · action: <b>${esc(r.next_action || 'Watch')}</b></li>`\n    );\n  }\n  lines.push('</ul>');\n}\n\nconst digestEmails = String(cfg.digestEmails || cfg.yourEmail || '')\n  .split(/[,;]/).map(s => s.trim()).filter(Boolean).join(', ');\n\nreturn [{\n  json: {\n    rows,\n    digestHtml: lines.join('\\n'),\n    companyCount: rows.length,\n    newlyAddedCount: latestOpen.length,\n    fundingTouched: prev.fundingTouched || 0,\n    hiringYes: hiringYes.length,\n    applyNow: applyNow.length,\n    findContact: findContact.length,\n    readyToApply,\n    yourEmail: digestEmails,\n    sheetUrl: cfg.sheetUrl || prev.sheetUrl || '',\n    jobsMatched: hiringYes.length,\n    apifyJobs: 0,\n    freeChecks: { checked, liHits, careersHits, emailHits },\n  }\n}];\n"
+      },
+      "id": "st-free-hiring",
+      "name": "🧠 Free Hiring Check + Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst cfg = $('⚙️ Config').first().json;\nconst prev = $input.first().json;\nlet rows = (prev.rows || []).map(r => ({ ...r }));\nconst today = new Date().toISOString().slice(0, 10);\nconst enabled = String(cfg.draftEmailsEnabled || 'true') !== 'false';\nconst maxDrafts = Math.min(Number(cfg.maxDraftsPerRun || 8), 15);\nconst cooldown = Number(cfg.draftCooldownDays || 14);\nconst candidateName = String(cfg.candidateName || 'Sakshi Chaudhary').trim();\nconst candidateEmail = String(cfg.candidateEmail || 'ch.sakshiasb@gmail.com').trim();\nconst linkedin = String(cfg.candidateLinkedin || 'https://www.linkedin.com/in/fabsakshi').trim();\nconst portfolio = String(cfg.candidatePortfolio || 'https://ai-product-sakshi.netlify.app').trim();\n\nconst DONE = new Set(['Applied', 'Contacted', 'Skip']);\nfunction isDone(s) { return DONE.has(String(s || '').trim()); }\nfunction daysSince(iso) {\n  if (!iso) return Infinity;\n  const t = Date.parse(iso);\n  if (Number.isNaN(t)) return Infinity;\n  return (Date.now() - t) / 86400000;\n}\nfunction firstJob(row) {\n  return String(row.pm_job_urls || '').split(' | ').map(s => s.trim()).filter(Boolean)[0] || '';\n}\nfunction firstTitle(row) {\n  return String(row.pm_job_titles || '').split(' | ').map(s => s.trim()).filter(Boolean)[0] || '';\n}\nfunction esc(s) {\n  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n}\n\nfunction fundingSnippet(row) {\n  return [row.funding_amount, row.funding_stage, row.funding_date].filter(Boolean).join(' · ')\n    || row.total_raised_note || 'your recent funding round';\n}\n\nfunction buildApplyBody(row) {\n  const role = firstTitle(row) || 'Product Manager / Product Owner';\n  const job = firstJob(row);\n  const lines = [];\n  lines.push(`Hi ${row.company} team,`);\n  lines.push('');\n  lines.push(`I'm ${candidateName}, a Product Manager (~3.5 YOE) based in Berlin. I saw you're hiring for ${role}${job ? '' : ' / open product roles'} and wanted to reach out directly.`);\n  lines.push('');\n  lines.push('Recently I\\'ve owned B2B SaaS discovery → delivery (backlog, PRDs, release planning) with cross-functional teams, and I\\'m looking for a PM role at a growing German startup.');\n  if (row.one_liner) lines.push(`${row.company}\\'s focus on ${row.one_liner} is especially interesting to me.`);\n  lines.push('');\n  if (job) lines.push(`Role I\\'m looking at: ${job}`);\n  if (row.careers_url && row.careers_url !== job) lines.push(`Careers: ${row.careers_url}`);\n  lines.push('');\n  lines.push('Happy to share a tailored CV/CL, or jump on a short call if useful. What\\'s the best next step on your side?');\n  lines.push('');\n  lines.push('Best,');\n  lines.push(candidateName);\n  lines.push(candidateEmail);\n  lines.push(linkedin);\n  lines.push(portfolio);\n  return lines.join('\\n');\n}\n\nfunction buildContactBody(row) {\n  const fund = fundingSnippet(row);\n  const lines = [];\n  lines.push(`Hi ${row.company} team,`);\n  lines.push('');\n  lines.push(`I'm ${candidateName}, a Product Manager based in Berlin (~3.5 YOE, B2B SaaS / product strategy). Congrats on ${fund} — exciting milestone.`);\n  lines.push('');\n  lines.push('I\\'m exploring PM / Product Owner roles at recently funded startups in Germany. If you\\'re hiring (or expect to soon), I\\'d love to be considered or get a pointer to the right person.');\n  if (row.one_liner) lines.push(`Your work around ${row.one_liner} maps well to problems I\\'ve shipped against.`);\n  lines.push('');\n  if (row.careers_url) lines.push(`I found: ${row.careers_url}`);\n  else if (row.website) lines.push(`Website: ${row.website}`);\n  lines.push('');\n  lines.push('I can send a short CV tailored to your stage/stack. Open to email or 15 minutes whenever convenient.');\n  lines.push('');\n  lines.push('Thanks for reading,');\n  lines.push(candidateName);\n  lines.push(candidateEmail);\n  lines.push(linkedin);\n  lines.push(portfolio);\n  return lines.join('\\n');\n}\n\nfunction emailLooksUsable(email, company) {\n  const e = String(email || '').toLowerCase().trim();\n  if (!e.includes('@') || e.length > 80) return false;\n  if (/(noreply|no-reply|donotreply|privacy|legal|newsletter|marketing|sentry\\.io|wixpress|example\\.com)/i.test(e)) return false;\n  // Drop obvious wrong-domain celebs/brands unless company matches\n  const domain = e.split('@')[1] || '';\n  const companyKey = String(company || '').toLowerCase().replace(/[^a-z0-9]/g, '');\n  if (/^(tesla|google|microsoft|amazon|apple|meta|facebook)\\./i.test(domain) && !companyKey.includes(domain.split('.')[0])) {\n    return false;\n  }\n  return true;\n}\nfunction isPmishTitle(row) {\n  const t = String(row.pm_job_titles || '');\n  if (!t) return false;\n  if (/\\b(intern|werkstudent|working student|chief of staff|assistant)\\b/i.test(t) && !/\\bproduct\\b/i.test(t)) return false;\n  return /\\bproduct\\s*(manager|owner|ops|operations|analyst)?\\b/i.test(t) || /\\bpm\\b/i.test(t);\n}\n\nconst pool = rows\n  .filter(r => !isDone(r.status))\n  .filter(r => emailLooksUsable(r.apply_email, r.company))\n  .filter(r => r.next_action === 'Apply now' || r.next_action === 'Find contact')\n  .filter(r => daysSince(r.last_draft_at) > cooldown)\n  .sort((a, b) => {\n    const rank = (r) => (r.next_action === 'Apply now' && isPmishTitle(r) ? 0 : r.next_action === 'Apply now' ? 1 : 2);\n    if (rank(a) !== rank(b)) return rank(a) - rank(b);\n    return Number(b.priority_score || 0) - Number(a.priority_score || 0);\n  });\n\nconst draftCandidates = [];\nif (enabled) {\n  for (const r of pool.slice(0, maxDrafts)) {\n    const isApply = r.next_action === 'Apply now' && isPmishTitle(r);\n    const role = firstTitle(r);\n    const subject = isApply\n      ? (role ? `Interest in ${role} — ${r.company}` : `Product role at ${r.company} — ${candidateName}`)\n      : `Product Manager — ${r.company} (Berlin)`;\n    const body = isApply ? buildApplyBody(r) : buildContactBody(r);\n    draftCandidates.push({\n      company: r.company,\n      to: String(r.apply_email).trim().toLowerCase(),\n      subject,\n      message: body,\n      next_action: r.next_action,\n      priority: r.priority,\n    });\n    // mark row so we don't re-draft next run\n    const idx = rows.findIndex(x => x.company === r.company);\n    if (idx >= 0) rows[idx] = { ...rows[idx], last_draft_at: today };\n  }\n}\n\nlet digestHtml = String(prev.digestHtml || '');\nconst draftBlock = [];\ndraftBlock.push(`<h3>4) Gmail drafts created (${draftCandidates.length}) — not sent</h3>`);\nif (!enabled) {\n  draftBlock.push('<p>Draft emails disabled in Config (<code>draftEmailsEnabled=false</code>).</p>');\n} else if (!draftCandidates.length) {\n  draftBlock.push('<p>No new drafts this run (need <b>apply_email</b>, open status, and outside draft cooldown).</p>');\n} else {\n  draftBlock.push('<p>Review in <b>Gmail → Drafts</b>, edit, then send manually. After sending, set sheet <b>status=Contacted</b> or <b>Applied</b>.</p>');\n  draftBlock.push('<ol>');\n  for (const d of draftCandidates) {\n    draftBlock.push(\n      `<li><b>${esc(d.company)}</b> → ${esc(d.to)}<br><span style=\"color:#555\">${esc(d.subject)}</span></li>`\n    );\n  }\n  draftBlock.push('</ol>');\n}\nif (digestHtml.includes('</h3>')) {\n  digestHtml = digestHtml + '\\n' + draftBlock.join('\\n');\n} else {\n  digestHtml = digestHtml + '\\n' + draftBlock.join('\\n');\n}\n\nreturn [{\n  json: {\n    ...prev,\n    rows,\n    digestHtml,\n    draftCandidates,\n    draftsCreated: draftCandidates.length,\n  }\n}];\n"
+      },
+      "id": "build-cold-email-drafts",
+      "name": "📝 Build Cold Email Drafts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst summary = $input.first().json;\nconst drafts = summary.draftCandidates || [];\nif (!drafts.length) {\n  return [];\n}\nreturn drafts.map(d => ({\n  json: {\n    to: d.to,\n    subject: d.subject,\n    message: d.message,\n    company: d.company,\n    next_action: d.next_action,\n  }\n}));\n"
+      },
+      "id": "expand-draft-items",
+      "name": "📤 Expand Draft Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3160,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.message }}",
+        "options": {
+          "sendTo": "={{ $json.to }}"
+        }
+      },
+      "id": "create-gmail-drafts",
+      "name": "📧 Create Gmail Drafts",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3400,
+        40
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "u2pr9rKiXbazj7bS",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "▶ Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "📊 Read Target Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Read Target Companies": {
+      "main": [
+        [
+          {
+            "node": "🌐 Maybe Fetch Seed CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🌐 Fetch Tech.eu Rounds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Maybe Fetch Seed CSV": {
+      "main": [
+        [
+          {
+            "node": "🔀 Wait Seed+Tech.eu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Fetch Tech.eu Rounds": {
+      "main": [
+        [
+          {
+            "node": "🔀 Wait Seed+Tech.eu",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "🔀 Wait Seed+Tech.eu": {
+      "main": [
+        [
+          {
+            "node": "🧠 Merge Enrich Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Merge Enrich Score": {
+      "main": [
+        [
+          {
+            "node": "🧠 Free Hiring Check + Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Expand Rows For Sheet": {
+      "main": [
+        [
+          {
+            "node": "❓ Is Summary Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❓ Is Summary Item?": {
+      "main": [
+        [
+          {
+            "node": "📧 Email Digest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📋 Prep Sheet Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📤 Expand Draft Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⏭ Non-summary Rows Ignored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Prep Sheet Rows": {
+      "main": [
+        [
+          {
+            "node": "🧹 Clear Target Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Email Digest": {
+      "main": [
+        [
+          {
+            "node": "📊 Update last_run Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚀 Bootstrap Webhook": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Mon & Thu 08:00": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧹 Clear Target Companies": {
+      "main": [
+        [
+          {
+            "node": "📋 Re-emit Rows After Clear",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Re-emit Rows After Clear": {
+      "main": [
+        [
+          {
+            "node": "📊 Rewrite Target Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Free Hiring Check + Digest": {
+      "main": [
+        [
+          {
+            "node": "📝 Build Cold Email Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Build Cold Email Drafts": {
+      "main": [
+        [
+          {
+            "node": "📤 Expand Rows For Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Expand Draft Items": {
+      "main": [
+        [
+          {
+            "node": "📧 Create Gmail Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 600
+  }
+}

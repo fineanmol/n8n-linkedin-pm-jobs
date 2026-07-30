@@ -39,6 +39,35 @@ export function shouldSkipForGerman(label, maxLevel = 'B2') {
   return need > max;
 }
 
+/** First CEFR level that belongs to German in a sentence (ignore English levels). */
+function germanCefrFromText(text) {
+  const s = String(text || '');
+  // German/Deutsch … CEFR, stopping before English clause when possible
+  const patterns = [
+    /\b(?:german|deutsch(?:kenntnisse)?)\b(?:(?!\benglish\b)[^.!?]){0,40}?\b(a1|a2|b1|b2|c1|c2)\b/i,
+    /\b(a1|a2|b1|b2|c1|c2)\b(?:(?!\benglish\b)[^.!?]){0,40}?\b(?:german|deutsch)\b/i,
+    /\bdeutschkenntnisse\b[^.!?english]{0,40}?\b(a1|a2|b1|b2|c1|c2)\b/i,
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (!m) continue;
+    const span = m[0].toLowerCase();
+    if (/\benglish\b/.test(span) && !/\b(?:german|deutsch)[^.!?]{0,20}\b(a1|a2|b1|b2|c1|c2)\b/.test(span)) {
+      continue;
+    }
+    // Reject "English B2 … German" style false positives on reverse pattern
+    if (/^\s*(a1|a2|b1|b2|c1|c2)\b/i.test(m[0]) && /\benglish\b[^.!?]{0,30}$/i.test(s.slice(0, m.index))) {
+      continue;
+    }
+    if (m.index != null) {
+      const before = s.slice(Math.max(0, m.index - 40), m.index).toLowerCase();
+      if (/\benglish\b/.test(before) && !/\b(?:german|deutsch)\b/.test(before)) continue;
+    }
+    return m[1].toUpperCase();
+  }
+  return '';
+}
+
 export function extractGermanRequired({ description = '', title = '' } = {}) {
   const text = `${title}\n${description}`.replace(/\s+/g, ' ').trim();
   if (!text) return 'Not specified';
@@ -55,58 +84,77 @@ export function extractGermanRequired({ description = '', title = '' } = {}) {
     return 'None';
   }
 
-  // CEFR codes near German/Deutsch (prefer explicit level over soft words)
-  const cefrNearGerman = [
-    /(?:german|deutsch(?:kenntnisse)?)[^.!?]{0,40}\b(a1|a2|b1|b2|c1|c2)\b/i,
-    /\b(a1|a2|b1|b2|c1|c2)\b[^.!?]{0,40}(?:german|deutsch)/i,
-    /deutschkenntnisse[^.!?]{0,40}\b(a1|a2|b1|b2|c1|c2)\b/i,
-    /sprachniveau[^.!?]{0,30}\b(a1|a2|b1|b2|c1|c2)\b/i,
-    /verhandlungssicher(?:e|en)?[^.!?]{0,40}\b(a1|a2|b1|b2|c1|c2)\b/i,
-  ];
-  for (const re of cefrNearGerman) {
-    const m = text.match(re);
-    if (m) return m[1].toUpperCase();
-  }
+  // --- Native / Fluent FIRST ---
+  // JDs often say: "Native or fluent in German, very good level of English (B2)"
+  // Old bug: CEFR matcher grabbed English B2 and returned B2 before Native ran.
 
-  // Standalone CEFR in language section-ish context
-  const cefrAny = text.match(
-    /\b(?:level|niveau|min(?:imum)?\.?|at\s+least)\s*(a1|a2|b1|b2|c1|c2)\b/i,
-  );
-  if (cefrAny && /german|deutsch|language|sprache/i.test(lower)) {
-    return cefrAny[1].toUpperCase();
-  }
-
-  // Native / mother tongue
   if (
-    /(?:native|mother[- ]tongue|muttersprach)/i.test(lower) &&
-    /(?:german|deutsch)/i.test(lower)
+    /native\s+or\s+fluent(?:ly)?\s+(?:in\s+)?german/i.test(lower) ||
+    /fluent\s+or\s+native\s+(?:in\s+)?german/i.test(lower) ||
+    /(?:native|fluent)\s*\/\s*(?:fluent|native)\s+(?:in\s+)?german/i.test(lower)
   ) {
     return 'Native';
   }
-  if (/deutsch\s+als\s+muttersprache/i.test(lower)) return 'Native';
 
-  // Fluent / business fluent / verhandlungssicher ≈ above B2
+  if (
+    /(?:native|mother[- ]tongue)\s+(?:in\s+|speaker\s+(?:of\s+)?)?german/i.test(lower) ||
+    /german\s+(?:native|mother[- ]tongue)/i.test(lower) ||
+    /(?:native|mother[- ]tongue|muttersprach)[^.!?]{0,30}(?:german|deutsch)/i.test(lower) ||
+    /(?:german|deutsch)[^.!?]{0,30}(?:native|mother[- ]tongue|muttersprach)/i.test(lower) ||
+    /deutsch\s+als\s+muttersprache/i.test(lower)
+  ) {
+    // Don't treat "native English … German nice-to-have" as Native German
+    if (/native\s+english/i.test(lower) && !/native[^.!?]{0,20}german|german[^.!?]{0,20}native/i.test(lower)) {
+      /* fall through */
+    } else {
+      return 'Native';
+    }
+  }
+
   if (
     /(?:business\s+)?fluent(?:ly)?\s+(?:in\s+)?german/i.test(lower) ||
     /german\s+(?:business\s+)?fluent/i.test(lower) ||
-    /verhandlungssicher(?:e|en)?\s+deutsch/i.test(lower) ||
+    /fluent\s+german/i.test(lower) ||
+    /verhandlungssicher\w*\s+deutsch/i.test(lower) ||
     /deutschkenntnisse\s+verhandlungssicher/i.test(lower) ||
-    /flie[sß]end(?:e|es)?\s+deutsch/i.test(lower)
+    /flie[sß]end\w*\s+deutsch/i.test(lower)
   ) {
     return 'Fluent';
   }
 
-  // Soft: "German speaker" / "Deutschkenntnisse" without level → assume B2-ish keep
+  // Nice-to-have German before CEFR (so "English B2, German nice to have" ≠ B2)
+  if (
+    /(?:nice\s+to\s+have|plus|bonus|ideally|von\s+vorteil)[^.!?]{0,40}(?:german|deutsch)/i.test(
+      lower,
+    ) ||
+    /(?:german|deutsch)[^.!?]{0,40}(?:nice\s+to\s+have|plus|von\s+vorteil|appreciated)/i.test(
+      lower,
+    )
+  ) {
+    // Only if no hard German requirement elsewhere
+    if (
+      !/native|fluent|verhandlungssicher|flie[sß]end|(?:german|deutsch)[^.!?]{0,20}\b(c1|c2|b2|b1|a2|a1)\b/i.test(
+        lower,
+      )
+    ) {
+      return 'B1';
+    }
+  }
+
+  const cefr = germanCefrFromText(text);
+  if (cefr) return cefr;
+
+  // Soft: "German speaker" / "Deutschkenntnisse" without level → keep as B2
   if (
     /\bgerman\s+speaker\b/i.test(lower) ||
     /\bdeutschkenntnisse\b/i.test(lower) ||
     /\bgerman\s+(?:skills|language)\s+required\b/i.test(lower) ||
     /\bdeutsch\s+erforderlich\b/i.test(lower)
   ) {
-    return 'B2'; // conservative keep for learner at B2
+    return 'B2';
   }
 
-  // Mentions German as nice-to-have only
+  // Nice-to-have only
   if (
     /(?:nice\s+to\s+have|plus|bonus|ideally|von\s+vorteil)[^.!?]{0,40}(?:german|deutsch)/i.test(
       lower,
@@ -115,11 +163,10 @@ export function extractGermanRequired({ description = '', title = '' } = {}) {
       lower,
     )
   ) {
-    return 'B1'; // treat soft preference as <= B2
+    return 'B1';
   }
 
   if (/\bgerman\b|\bdeutsch/i.test(lower)) {
-    // Mentioned but unclear — don't auto-disqualify
     return 'Not specified';
   }
 
@@ -131,7 +178,7 @@ const isCli =
 if (isCli) {
   const sample =
     process.argv.slice(2).join(' ') ||
-    'Product Manager (German Speaker) — German B2 required, English C1';
+    'Languages: Native or fluent in German, very good level of English (B2).';
   console.log(
     JSON.stringify(
       {

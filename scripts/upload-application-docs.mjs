@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Upload resume.pdf + cover_letter.pdf for a job pack to Cloudflare R2
- * with clear filenames: resume_CompanyName.pdf / Cover_Letter_CompanyName.pdf
+ * with clear filenames: Name_Resume_CompanyName.pdf / Name_Cover_Letter_CompanyName.pdf
  *
  * Usage:
  *   node scripts/upload-application-docs.mjs --job-id li_xxx --pack-dir applications/jobs/... [--company "Acme"]
@@ -11,13 +11,13 @@
  *   R2_PUBLIC_BASE_URL        default https://pub-47bf039641094cef9259459eeb1367d4.r2.dev
  *   R2_KEY_PREFIX             default job-apps
  */
-import { access, copyFile, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { access, copyFile, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, "..");
 
 function arg(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -27,13 +27,13 @@ function arg(name) {
 
 /** Safe filename slug for company, e.g. "BEUMER Group" → "BEUMER_Group" */
 export function companyFileSlug(company) {
-  const s = String(company || 'Company')
-    .replace(/&amp;/gi, 'and')
-    .replace(/&/g, 'and')
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+  const s = String(company || "Company")
+    .replace(/&amp;/gi, "and")
+    .replace(/&/g, "and")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
     .slice(0, 60);
-  return s || 'Company';
+  return s || "Company";
 }
 
 function requireFile(p) {
@@ -42,39 +42,39 @@ function requireFile(p) {
 
 function putObject(bucket, key, filePath, contentType) {
   const result = spawnSync(
-    'npx',
+    "npx",
     [
-      'wrangler',
-      'r2',
-      'object',
-      'put',
+      "wrangler",
+      "r2",
+      "object",
+      "put",
       `${bucket}/${key}`,
-      '--file',
+      "--file",
       filePath,
-      '--content-type',
+      "--content-type",
       contentType,
-      '--remote',
+      "--remote",
     ],
-    { cwd: ROOT, encoding: 'utf8' },
+    { cwd: ROOT, encoding: "utf8" },
   );
   if (result.status !== 0) {
     throw new Error(
-      `R2 upload failed for ${key}:\n${result.stdout || ''}\n${result.stderr || ''}`,
+      `R2 upload failed for ${key}:\n${result.stdout || ""}\n${result.stderr || ""}`,
     );
   }
 }
 
 async function resolveCompany(absPack, company) {
   if (company && String(company).trim()) return String(company).trim();
-  for (const name of ['meta.json', 'sheet_fields.json']) {
+  for (const name of ["meta.json", "sheet_fields.json"]) {
     try {
-      const data = JSON.parse(await readFile(path.join(absPack, name), 'utf8'));
+      const data = JSON.parse(await readFile(path.join(absPack, name), "utf8"));
       if (data.company) return String(data.company).trim();
       // form_answers sometimes embeds company
       if (data.form_answers) {
         try {
           const fa =
-            typeof data.form_answers === 'string'
+            typeof data.form_answers === "string"
               ? JSON.parse(data.form_answers)
               : data.form_answers;
           if (fa?.company) return String(fa.company).trim();
@@ -91,34 +91,51 @@ async function resolveCompany(absPack, company) {
   const m = base.match(/^li_\d+_(.+)$/);
   if (m) {
     return m[1]
-      .split('_')
+      .split("_")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ');
+      .join(" ");
   }
-  return 'Company';
+  return "Company";
 }
 
 export async function uploadApplicationDocs({
   jobId,
   packDir,
   company,
-  bucket = process.env.R2_BUCKET || 'sakshi-job-applications',
-  publicBase =
-    process.env.R2_PUBLIC_BASE_URL ||
-    'https://pub-47bf039641094cef9259459eeb1367d4.r2.dev',
-  keyPrefix = process.env.R2_KEY_PREFIX || 'job-apps',
+  resumeFileNamePattern,
+  coverLetterFileNamePattern,
+  bucket = process.env.R2_BUCKET || "sakshi-job-applications",
+  publicBase = process.env.R2_PUBLIC_BASE_URL ||
+    "https://pub-47bf039641094cef9259459eeb1367d4.r2.dev",
+  keyPrefix = process.env.R2_KEY_PREFIX || "job-apps",
 } = {}) {
-  if (!jobId) throw new Error('jobId is required');
-  const absPack = path.resolve(ROOT, packDir || '');
-  const resumeLocal = path.join(absPack, 'resume.pdf');
-  const clLocal = path.join(absPack, 'cover_letter.pdf');
+  if (!jobId) throw new Error("jobId is required");
+  const absPack = path.resolve(ROOT, packDir || "");
+  const resumeLocal = path.join(absPack, "resume.pdf");
+  const clLocal = path.join(absPack, "cover_letter.pdf");
   await requireFile(resumeLocal);
   await requireFile(clLocal);
 
   const companyName = await resolveCompany(absPack, company);
   const slug = companyFileSlug(companyName);
-  const resumeFile = `resume_${slug}.pdf`;
-  const clFile = `Cover_Letter_${slug}.pdf`;
+  // Optional overrides from n8n Config / composePack body:
+  //   resumeFileNamePattern: "Sakshi_Resume_{company}"
+  //   coverLetterFileNamePattern: "Sakshi_Cover_Letter_{company}"
+  const resumePat =
+    resumeFileNamePattern ||
+    process.env.RESUME_PDF_NAME_PATTERN ||
+    "Sakshi_Resume_{company}";
+  const clPat =
+    coverLetterFileNamePattern ||
+    process.env.COVER_LETTER_PDF_NAME_PATTERN ||
+    "Sakshi_Cover_Letter_{company}";
+  const applyPat = (pat) =>
+    String(pat || "")
+      .replace(/\{\{\s*company\s*\}\}/gi, slug)
+      .replace(/\{company\}/gi, slug)
+      .replace(/\.pdf$/i, "");
+  const resumeFile = `${applyPat(resumePat) || `Sakshi_Resume_${slug}`}.pdf`;
+  const clFile = `${applyPat(clPat) || `Sakshi_Cover_Letter_${slug}`}.pdf`;
 
   // Named local copies (sheet downloads use R2 URL basename)
   const resumeNamedLocal = path.join(absPack, resumeFile);
@@ -129,10 +146,10 @@ export async function uploadApplicationDocs({
   const resumeKey = `${keyPrefix}/${jobId}/${resumeFile}`;
   const clKey = `${keyPrefix}/${jobId}/${clFile}`;
 
-  putObject(bucket, resumeKey, resumeNamedLocal, 'application/pdf');
-  putObject(bucket, clKey, clNamedLocal, 'application/pdf');
+  putObject(bucket, resumeKey, resumeNamedLocal, "application/pdf");
+  putObject(bucket, clKey, clNamedLocal, "application/pdf");
 
-  const base = publicBase.replace(/\/$/, '');
+  const base = publicBase.replace(/\/$/, "");
   return {
     jobId,
     company: companyName,
@@ -150,9 +167,9 @@ export async function uploadApplicationDocs({
 }
 
 async function main() {
-  const jobId = arg('job-id');
-  const packDir = arg('pack-dir');
-  const company = arg('company');
+  const jobId = arg("job-id");
+  const packDir = arg("pack-dir");
+  const company = arg("company");
   if (!jobId || !packDir) {
     console.error(
       'Usage: node scripts/upload-application-docs.mjs --job-id li_xxx --pack-dir applications/jobs/... [--company "Acme"]',

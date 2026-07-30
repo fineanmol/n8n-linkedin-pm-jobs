@@ -316,3 +316,21 @@ Every 2 days:
   Reads all "Applied" jobs → sends you a status report email
   Flags jobs with no response after 7+ days for follow-up
 ```
+
+---
+
+## DE Funded Startups → PM Targets (separate n8n workflow)
+
+Fully **n8n-native** weekly watchlist of recently funded German startups for PM job hunting.
+
+**Details:** see [`STARTUP_TARGETS.md`](STARTUP_TARGETS.md)
+
+| Step | Action |
+|------|--------|
+| 1 | Run Apps Script [`google-sheets-startup-targets-setup.js`](google-sheets-startup-targets-setup.js) on a new spreadsheet |
+| 2 | Import [`workflow-startup-targets.json`](workflow-startup-targets.json) into n8n |
+| 3 | Attach Google Sheets + Gmail credentials; fill ⚙️ Config (`startupTargetsSpreadsheetId`, `apifyApiKey`, `yourEmail`) |
+| 4 | First execute: `forceImportSeed=true` (loads ~190 seed companies) |
+| 5 | Set `forceImportSeed=false`, Activate (Mondays 08:00 Europe/Berlin) |
+
+No local Node runtime is required — Tech.eu + Apify + Sheets + Gmail all run as n8n nodes.

@@ -1,28 +1,292 @@
 #!/usr/bin/env node
 /**
  * Truth-bound ATS boost to >= target (default 90).
- * Weaves missing JD keywords into summary / skills / bullets / CL (no invented jobs).
+ *
+ * Rules:
+ * - NEVER append "(keyword)" spam to bullets or CL paragraphs.
+ * - DE JD terms → EN via truth map, then Tier A (Profile) or Tier B (PM baseline ≤5y).
+ * - Never invent languages, niche tools, fake metrics, or senior claims.
+ * - Humanized weave: skills chips + at most one natural summary/CL clause.
+ * - Strip any existing parenthetical keyword dumps from prior bad packs.
  *
  * Usage:
  *   node scripts/boost-ats.mjs --pack-dir applications/jobs/li_xxx --jd-file /tmp/jd.txt [--target 90]
  */
+import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
+import {
+  loadTruthLexicon,
+  extractTruthSkillsFromJd,
+  resolveTruthSkill,
+  humanizeWeave,
+  scoreTruthAts,
+  scoreBodyAts,
+  selectScorableTruthSkills,
+} from './truth-lexicon.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const API = process.env.RESUME_API_URL || 'http://127.0.0.1:8791';
 const MVP = path.resolve(ROOT, '../Site/resume-cv-mvp');
 
+/** Only these (or master skills) may be woven into docs. */
+export const SKILL_CATALOG = [
+  'Product Owner',
+  'Product Manager',
+  'Product Lead',
+  'Roadmaps',
+  'Backlog',
+  'Agile',
+  'Scrum',
+  'Kanban',
+  'Stakeholder Management',
+  'SQL',
+  'A/B Testing',
+  'Experimentation',
+  'Pricing',
+  'Market Research',
+  'GTM',
+  'SaaS',
+  'B2B',
+  'CRM',
+  'Salesforce',
+  'API',
+  'KPIs',
+  'OKRs',
+  'Analytics',
+  'Figma',
+  'JIRA',
+  'Magento',
+  'Loyalty',
+  'Fintech',
+  'AI',
+  'ML',
+  'Machine Learning',
+  'E-commerce',
+  'Logistics',
+  'Paid Search',
+  'Martech',
+  'Marketplace',
+  'Customer Acquisition',
+  'SEO',
+  'Prioritization',
+  'User Experience',
+  'User Research',
+  'Product Strategy',
+  'MVP',
+  'Power BI',
+  'Tableau',
+  'Python',
+  'Cross-functional',
+];
+
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? undefined : process.argv[i + 1];
 }
 
+/** Common German filler that old ATS extractors treated as "keywords". */
+export const GERMAN_FILLER = new Set(
+  `
+  und oder der die das den dem des ein eine einer einem eines ist sind war
+  mit von für auf zum zur auch nicht sich wir sie uns ihr ihre deiner deine
+  unsere unserer unserem unseren arbeit arbeiten erfahrung zusammenarbeit
+  kenntnisse anforderungen aufgaben bereich bereiche sowie durch
+  nach über als bei bis hast bist wird werden kann sollen sollte etwa
+  innen lösen lösung lösungen regelmäßig regelmässig unterstützt
+  unterstützung unserer eurer sungen regelm verst unterst
+  `.trim().split(/\s+/),
+);
+
+/** Clearly German (not shared with English) — used to reject DE tokens in EN docs. */
+export const GERMAN_DOC_BLOCKLIST = new Set([
+  ...GERMAN_FILLER,
+  'zusammenarbeit',
+  'erfahrung',
+  'kenntnisse',
+  'anforderungen',
+  'aufgaben',
+  'bereich',
+  'bereiche',
+  'lösung',
+  'lösungen',
+  'unterstützt',
+  'unterstützung',
+  'regelmäßig',
+  'regelmässig',
+  'sowie',
+  'oder',
+  'eine',
+  'einer',
+  'unserer',
+  'deine',
+  'hast',
+  'bist',
+  'unterst',
+  'sungen',
+  'regelm',
+  'verst',
+]);
+
+/** True if JD is mostly German (resume/CL stay English — never weave DE filler). */
+export function isMostlyGermanJd(jd) {
+  const t = String(jd || '');
+  if (!t || t.length < 40) return false;
+  const deHits = (t.match(/\b(und|oder|der|die|das|mit|von|für|nicht|sich|wir|eine|einer| ent|ung|keit|schen|denn|auch|sowie|aufgaben|anforderungen)\b/gi) || []).length;
+  const enHits = (t.match(/\b(the|and|with|for|you|our|will|experience|requirements|responsibilities)\b/gi) || []).length;
+  const umlauts = (t.match(/[äöüÄÖÜß]/g) || []).length;
+  return umlauts >= 3 || deHits >= 12 && deHits > enHits * 1.2;
+}
+
+/** Remove trailing (kw) (kw) (kw) dumps from older bad boosts (EN + DE). */
+export function stripKeywordSpam(text) {
+  if (!text) return text;
+  return String(text)
+    // 2+ parenthetical tokens in a row (ascii or unicode letters)
+    .replace(/(\s*\([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9+.#/\- ]{0,40}\)){2,}\.?/g, '')
+    // even a single trailing (german-ish|filler) token left by partial cleans
+    .replace(/\s*\(([a-zà-ÿ][a-zà-ÿ0-9+.#/\-]{1,30})\)\.?$/gim, (full, word) => {
+      const w = String(word || '').toLowerCase();
+      if (GERMAN_FILLER.has(w) || w.length <= 3) return '';
+      // drop truncated DE stems like unterst / sungen / regelm
+      if (/^(unterst|sungen|regelm|verst|unser|euer|dein|eine|oder|hast|bist|innen)/i.test(w)) {
+        return '';
+      }
+      return full;
+    })
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,;])/g, '$1')
+    .replace(/\s+$/gm, '')
+    .trim();
+}
+
+/** Strip markdown **bold** from pack text (no keyword highlighting in PDFs). */
+function stripMdBold(text) {
+  return String(text || '').replace(/\*\*/g, '');
+}
+
+function cleanDocSpam(resume, cl) {
+  const r = structuredClone(resume);
+  const c = structuredClone(cl);
+  r.resumeSummary = stripMdBold(stripKeywordSpam(r.resumeSummary));
+  r.resumeExperience = (r.resumeExperience || []).map((job) => ({
+    ...job,
+    bullets: stripMdBold(stripKeywordSpam(job.bullets || ''))
+      .split('\n')
+      .map((line) => line.replace(/\s+\(user experience\)|\s+\(ai-powered\)|\s+\(end-to-end\)|\s+\(ownership\)|\s+\(strong\)|\s+\(build\)|\s+\(help\)/gi, ''))
+      .map((line) => stripKeywordSpam(line))
+      .filter(Boolean)
+      .join('\n'),
+  }));
+  if (Array.isArray(r.resumeAchievements)) {
+    r.resumeAchievements = r.resumeAchievements.map((a) => ({
+      ...a,
+      title: stripMdBold(a?.title || ''),
+      desc: stripMdBold(stripKeywordSpam(a?.desc || '')),
+    }));
+  }
+  for (const field of ['p1', 'p2', 'p3', 'p4']) {
+    if (c[field]) c[field] = stripMdBold(stripKeywordSpam(c[field]));
+  }
+  if (c.highlights?.length) {
+    c.highlights = c.highlights.map((h) => ({
+      ...h,
+      text: stripMdBold(stripKeywordSpam(h.text || '')),
+    }));
+  }
+  return { resume: r, coverLetter: c };
+}
+
+export function normalizeKw(kw) {
+  return String(kw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/** Map scorer "missing" tokens to a display label only if truth-allowed. */
+export function resolveAllowedKeyword(raw, masterSkills) {
+  const lexicon = loadTruthLexicon();
+  const hit = resolveTruthSkill(raw, lexicon);
+  if (hit) return hit.label;
+
+  const n = normalizeKw(raw);
+  if (!n || n.length < 2) return null;
+  if (/[äöüß]/i.test(n) || GERMAN_FILLER.has(n)) return null;
+  if (/^(der|die|das|und|oder|mit|von|für|eine|einer|nicht|sich|wir|team)$/i.test(n)) {
+    return null;
+  }
+
+  const masterList = String(masterSkills || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const label of [...SKILL_CATALOG, ...masterList]) {
+    const ln = normalizeKw(label);
+    if (ln === n || ln.includes(n) || n.includes(ln)) {
+      const truth = resolveTruthSkill(label, lexicon);
+      return truth ? truth.label : null;
+    }
+  }
+  return null;
+}
+
+function boostDocs(resume, cl, missing, masterSkills, jdThemes = []) {
+  const lexicon = loadTruthLexicon();
+  const allowed = [];
+  for (const raw of missing) {
+    const hit = resolveTruthSkill(raw, lexicon) || {
+      label: resolveAllowedKeyword(raw, masterSkills),
+    };
+    const label = hit?.label;
+    if (label && !allowed.some((a) => normalizeKw(a) === normalizeKw(label))) {
+      allowed.push(label);
+    }
+  }
+
+  // Always pass JD themes so summary/bullets rewrite even if chip list is full
+  const themes = [...jdThemes, ...allowed].filter(Boolean);
+  // Skills chips (+ headline already set in compose). No bullet duplication of chip skills.
+  const woven = humanizeWeave(resume, cl, allowed.length ? allowed : themes.slice(0, 10), {
+    maxFamiliar: 0,
+    maxBulletWeaves: 0,
+    maxAchievementWeaves: 0,
+    lexicon,
+    jdThemes: themes,
+    skillsOnly: true,
+    prioritizeBodyLabels: [],
+  });
+  // Keep master skill order first, then woven additions
+  const master = (masterSkills || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const skills = (woven.resume.resumeSkills || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const byLower = new Map(skills.map((s) => [s.toLowerCase(), s]));
+  const ordered = [];
+  for (const m of master) {
+    ordered.push(byLower.get(m.toLowerCase()) || m);
+  }
+  for (const s of skills) {
+    if (!ordered.some((x) => x.toLowerCase() === s.toLowerCase())) ordered.push(s);
+  }
+  woven.resume.resumeSkills = ordered.slice(0, Math.max(master.length + 12, 36)).join(', ');
+  return {
+    resume: woven.resume,
+    coverLetter: woven.coverLetter,
+    allowedCount: Math.max(allowed.length, themes.length ? 1 : 0),
+    added: woven.added,
+  };
+}
+
 async function scoreViaApi(resume, coverLetter, jd) {
-  // Lightweight: call export isn't needed — use local extract via tsx child
   const { spawnSync } = await import('node:child_process');
   const script = `
 import { readFileSync } from 'fs';
@@ -52,80 +316,6 @@ console.log(JSON.stringify(ats));
   return JSON.parse(line);
 }
 
-function weaveKeyword(text, kw) {
-  if (!text) return text;
-  if (text.toLowerCase().includes(kw.toLowerCase())) return text;
-  // append naturally without inventing employers
-  const clean = kw.trim();
-  if (!clean) return text;
-  return `${text.replace(/\s+$/, '')} Experienced with ${clean}.`.replace(/\.\./g, '.');
-}
-
-function boostDocs(resume, cl, missing, masterSkills) {
-  const r = structuredClone(resume);
-  const c = structuredClone(cl);
-  const skills = (r.resumeSkills || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  for (const kw of missing) {
-    const k = kw.trim();
-    if (!k || k.length < 2) continue;
-    // Prefer skills list for short tokens
-    if (k.length <= 28 && !skills.some((s) => s.toLowerCase() === k.toLowerCase())) {
-      skills.push(k);
-    }
-    // Summary
-    if (!(r.resumeSummary || '').toLowerCase().includes(k.toLowerCase())) {
-      const add = ` Strong exposure to ${k}.`;
-      if ((r.resumeSummary + add).length <= 430) r.resumeSummary = (r.resumeSummary || '') + add;
-    }
-    // First experience bullets
-    if (r.resumeExperience?.[0]) {
-      const b = r.resumeExperience[0].bullets || '';
-      if (!b.toLowerCase().includes(k.toLowerCase())) {
-        const lines = b.split('\n').filter(Boolean);
-        if (lines[0] && !lines[0].toLowerCase().includes(k.toLowerCase())) {
-          lines[0] = lines[0].replace(/\.$/, '') + ` (${k}).`;
-          r.resumeExperience[0].bullets = lines.join('\n');
-        }
-      }
-    }
-    // Cover letter p2/p3 + highlights
-    for (const field of ['p2', 'p3']) {
-      if (!(c[field] || '').toLowerCase().includes(k.toLowerCase())) {
-        c[field] = weaveKeyword(c[field], k);
-      }
-    }
-    if (c.highlights?.length) {
-      const h = c.highlights[0];
-      if (h && !(h.text || '').toLowerCase().includes(k.toLowerCase())) {
-        h.text = `${(h.text || '').replace(/\.$/, '')}; ${k}.`;
-      }
-    }
-  }
-
-  // Keep master skill ORDER for known chips; append new JD chips at end
-  const master = (masterSkills || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const byLower = new Map(skills.map((s) => [s.toLowerCase(), s]));
-  const ordered = [];
-  for (const m of master) {
-    const hit = byLower.get(m.toLowerCase());
-    if (hit) ordered.push(hit);
-    else ordered.push(m);
-  }
-  for (const s of skills) {
-    if (!ordered.some((x) => x.toLowerCase() === s.toLowerCase())) ordered.push(s);
-  }
-  // Cap extra skills to avoid 2-page — keep master count + up to 4 JD extras
-  r.resumeSkills = ordered.slice(0, master.length + 4).join(', ');
-  return { resume: r, coverLetter: c };
-}
-
 async function main() {
   const packDir = path.resolve(ROOT, arg('pack-dir') || '');
   const jdFile = path.resolve(arg('jd-file') || '');
@@ -141,62 +331,317 @@ async function main() {
     await readFile(path.join(ROOT, 'applications/master/sakshi-resume.json'), 'utf8'),
   );
 
-  // Restore photo always
+  // Strip legacy keyword spam first
+  ({ resume, coverLetter } = cleanDocSpam(resume, coverLetter));
+
   resume.avatar = master.avatar;
   resume.layoutSettings = { ...(resume.layoutSettings || {}), showPhoto: true };
   coverLetter.avatar = master.avatar;
   coverLetter.layoutSettings = { ...(coverLetter.layoutSettings || {}), showPhoto: true };
 
-  let ats = await scoreViaApi(resume, coverLetter, jd);
-  console.log('ATS before', ats.score, 'missing', ats.missing.slice(0, 12));
+  const germanJd = isMostlyGermanJd(jd);
+  const lexicon = loadTruthLexicon({ masterResume: master });
+  const allTruthSkills = extractTruthSkillsFromJd(jd, lexicon);
+  const truthSkills = selectScorableTruthSkills(allTruthSkills, {
+    masterResume: master,
+    max: 16,
+    jdText: jd,
+  });
+  const truthLabels = truthSkills.map((t) => t.label);
+  console.log(
+    `${germanJd ? 'JD looks German — ' : ''}Scorable JD skills ${truthLabels.length}/${allTruthSkills.length}:`,
+    truthLabels.slice(0, 14).join(', '),
+  );
 
+  // Gate 3: honest ATS = skills chips + body (real PDF scans include skills).
+  // Scorable keywords are JD-ranked (requirements/tools first), not master-biased fluff.
+  // Body-only % is diagnostic only — not used as the sheet score.
+  const bodyTarget = Math.min(target, Math.max(85, target - 5)); // diagnostic only
+  let truthAts = scoreTruthAts(resume, coverLetter, truthLabels);
+  let bodyAts = scoreBodyAts(resume, coverLetter, truthLabels);
+  console.log(
+    'Truth ATS before',
+    truthAts.score,
+    'body',
+    bodyAts.score,
+    'missing',
+    truthAts.missing.slice(0, 12),
+  );
+
+  let weaveAudit = [];
   let guard = 0;
-  while (ats.score < target && ats.missing.length && guard < 6) {
-    const next = boostDocs(resume, coverLetter, ats.missing.slice(0, 12), master.resumeSkills);
+  // Honest ATS via skills chips only — no experience rewrites for terms already on chips.
+  while (truthAts.score < target && truthAts.missing.length && guard < 6) {
+    const need = truthAts.missing.slice(0, 12);
+    const next = boostDocs(
+      resume,
+      coverLetter,
+      need,
+      master.resumeSkills,
+      truthLabels,
+    );
+    if (next.allowedCount === 0 && !(next.added || []).length) {
+      console.log('No more truth-allowed skills to swap — stopping (will not invent)');
+      break;
+    }
     resume = next.resume;
     coverLetter = next.coverLetter;
-    ats = await scoreViaApi(resume, coverLetter, jd);
-    console.log(`ATS pass ${guard + 1}`, ats.score, 'still missing', ats.missing.slice(0, 8));
+    weaveAudit.push(...(next.added || []));
+    truthAts = scoreTruthAts(resume, coverLetter, truthLabels);
+    bodyAts = scoreBodyAts(resume, coverLetter, truthLabels);
+    console.log(
+      `Truth ATS pass ${guard + 1}`,
+      truthAts.score,
+      'body',
+      bodyAts.score,
+      'still missing chips',
+      truthAts.missing.slice(0, 8),
+    );
     guard++;
   }
 
-  if (ats.score < target) {
-    console.error(`FAILED to reach ${target} (got ${ats.score})`);
+  // Optional legacy scorer for diagnostics only (never drives DE filler weave)
+  let ats = { score: truthAts.score, missing: truthAts.missing, matched: truthAts.matched };
+  try {
+    const apiAts = await scoreViaApi(resume, coverLetter, jd);
+    console.log('Legacy scorer (diag)', apiAts.score, 'raw missing sample', (apiAts.missing || []).slice(0, 6));
+  } catch (e) {
+    console.log('Legacy scorer skipped:', e.message?.slice(0, 120));
+  }
+
+  // Quality gate: analyze + verify BEFORE any PDF export / write that we'd ship
+  const { verifyPackQuality, sanitizeForQuality } = await import('./verify-pack-quality.mjs');
+  ({ resume, coverLetter } = sanitizeForQuality(resume, coverLetter));
+  let quality = verifyPackQuality({
+    resume,
+    coverLetter,
+    jd,
+    masterSkills: master.resumeSkills,
+    target,
+    truthSkills,
+    weaveAudit,
+  });
+
+  // One more skills-only pass if honest ATS still short
+  let honestGuard = 0;
+  while (
+    quality.ok &&
+    quality.honestAts.score < target &&
+    quality.honestAts.missing.length &&
+    honestGuard < 4
+  ) {
+    const need = quality.honestAts.missing.slice(0, 12);
+    const next = boostDocs(
+      resume,
+      coverLetter,
+      need,
+      master.resumeSkills,
+      truthLabels,
+    );
+    if (next.allowedCount === 0) break;
+    resume = next.resume;
+    coverLetter = next.coverLetter;
+    weaveAudit.push(...(next.added || []));
+    ({ resume, coverLetter } = sanitizeForQuality(resume, coverLetter));
+    quality = verifyPackQuality({
+      resume,
+      coverLetter,
+      jd,
+      masterSkills: master.resumeSkills,
+      target,
+      truthSkills,
+      weaveAudit,
+    });
+    console.log(
+      `Honest ATS pass ${honestGuard + 1}`,
+      quality.honestAts.score,
+      'body',
+      quality.bodyAts?.score,
+      'missing body',
+      (quality.bodyAts?.missing || []).slice(0, 8),
+    );
+    honestGuard++;
+  }
+
+  if (!quality.ok) {
+    console.error('QUALITY GATE FAILED — refusing export/upload:');
+    for (const issue of quality.issues) console.error('  -', issue);
+    console.error(
+      JSON.stringify(
+        { analysis: quality.analysis, honestAts: quality.honestAts, bodyAts: quality.bodyAts },
+        null,
+        2,
+      ),
+    );
+    process.exit(4);
+  }
+  if (quality.warnings.length) {
+    console.log('Quality warnings:', quality.warnings.join('; '));
+  }
+  console.log(
+    `Quality OK — germanJd=${quality.analysis.germanJd} honestAts=${quality.honestAts.score} bodyAts=${quality.bodyAts?.score} jdSkills=${quality.analysis.jdSkillCount} woven=${[...new Set(weaveAudit)].join(', ') || 'none'}`,
+  );
+
+  if (quality.honestAts.score < target) {
+    console.error(
+      `FAILED honest ATS ${quality.honestAts.score} < ${target} (missing: ${(quality.honestAts.missing || []).slice(0, 10).join(', ')})`,
+    );
     process.exit(2);
   }
+  if ((quality.bodyAts?.score ?? 0) < bodyTarget && truthLabels.length >= 4) {
+    console.log(
+      `Body ATS ${quality.bodyAts.score} < ${bodyTarget} (chips-only mode — not failing; missing body: ${(quality.bodyAts.missing || []).slice(0, 10).join(', ')})`,
+    );
+  }
+  // Sheet score = honest ATS (skills + existing master body). No bullet rewrites.
+  ats = {
+    score: quality.honestAts.score,
+    missing: quality.honestAts.missing,
+    matched: quality.honestAts.matched,
+  };
+
+  await writeFile(
+    path.join(packDir, 'truth_audit.json'),
+    JSON.stringify(
+      {
+        germanJd,
+        truthSkills,
+        woven: [...new Set(weaveAudit)],
+        matched: ats.matched,
+        missing: ats.missing,
+        score: ats.score,
+        boldKeywords: true,
+        checkedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
 
   await writeFile(path.join(packDir, 'resume.json'), JSON.stringify(resume, null, 2));
   await writeFile(path.join(packDir, 'cover_letter.json'), JSON.stringify(coverLetter, null, 2));
+  await writeFile(
+    path.join(packDir, 'quality.json'),
+    JSON.stringify({ ...quality, atsScore: ats.score, checkedAt: new Date().toISOString() }, null, 2),
+  );
 
-  const res = await fetch(`${API}/v1/export_pdfs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ resume, coverLetter, outputDir: packDir }),
-  });
-  const exported = await res.json();
-  if (!res.ok) {
-    console.error(exported);
-    process.exit(1);
+  function countPages() {
+    return Number(
+      spawnSync(
+        'python3',
+        [
+          '-c',
+          `import pypdf; print(len(pypdf.PdfReader(${JSON.stringify(path.join(packDir, 'resume.pdf'))}).pages))`,
+        ],
+        { encoding: 'utf8' },
+      ).stdout.trim(),
+    );
   }
 
-  // page check
-  const { spawnSync } = await import('node:child_process');
-  const pages = spawnSync(
-    'python3',
-    [
-      '-c',
-      `import pypdf; print(len(pypdf.PdfReader(${JSON.stringify(path.join(packDir, 'resume.pdf'))}).pages))`,
-    ],
-    { encoding: 'utf8' },
-  ).stdout.trim();
-  console.log(JSON.stringify({ atsScore: ats.score, pages: Number(pages), missing: ats.missing.slice(0, 10), exported }, null, 2));
-  if (Number(pages) !== 1) {
-    console.error('WARN: resume is not 1 page after boost');
+  /**
+   * Fit to 1 page WITHOUT dropping experience bullets (that left blank space).
+   * Only soft-trim summary/CL length; optionally nudge fontSize down slightly.
+   */
+  function compactForOnePage(resDoc, clDoc, { hard = false } = {}) {
+    const r = structuredClone(resDoc);
+    const c = structuredClone(clDoc);
+    const sumCap = hard ? 340 : 400;
+    if ((r.resumeSummary || '').length > sumCap) {
+      const t = r.resumeSummary.slice(0, sumCap);
+      r.resumeSummary = (t.match(/^[\s\S]*[.!?]/)?.[0] || t.replace(/\s+\S*$/, '')).trim();
+      if (!/[.!?]$/.test(r.resumeSummary)) r.resumeSummary += '.';
+    }
+    // Keep every experience bullet — never slice lines away
+    r.resumeExperience = (r.resumeExperience || []).map((job) => ({
+      ...job,
+      bullets: String(job.bullets || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n'),
+    }));
+    for (const field of ['p2', 'p3']) {
+      const cap = hard ? 320 : 400;
+      if (c[field] && c[field].length > cap) {
+        const t = c[field].slice(0, cap);
+        c[field] = (t.match(/^[\s\S]*[.!?]/)?.[0] || t.replace(/\s+\S*$/, '')).trim();
+        if (!/[.!?]$/.test(c[field])) c[field] += '.';
+      }
+    }
+  if (hard) {
+      const fs = Number(r.layoutSettings?.fontSize ?? 10);
+      r.layoutSettings = {
+        ...(r.layoutSettings || {}),
+        fontSize: Math.max(8.5, fs - 1),
+        lineHeight: Math.min(Number(r.layoutSettings?.lineHeight ?? 1.22), 1.15),
+      };
+    }
+    return { resume: r, coverLetter: c };
+  }
+
+  async function exportPdfs(resDoc, clDoc) {
+    const res = await fetch(`${API}/v1/export_pdfs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: resDoc, coverLetter: clDoc, outputDir: packDir }),
+    });
+    const exported = await res.json();
+    if (!res.ok) {
+      console.error(exported);
+      process.exit(1);
+    }
+    return exported;
+  }
+
+  let exported = await exportPdfs(resume, coverLetter);
+  let pages = countPages();
+
+  if (pages !== 1) {
+    console.log(`Resume is ${pages} page(s) — soft trim summary/CL (keeping all bullets)`);
+    ({ resume, coverLetter } = compactForOnePage(resume, coverLetter, { hard: false }));
+    await writeFile(path.join(packDir, 'resume.json'), JSON.stringify(resume, null, 2));
+    await writeFile(path.join(packDir, 'cover_letter.json'), JSON.stringify(coverLetter, null, 2));
+    exported = await exportPdfs(resume, coverLetter);
+    pages = countPages();
+  }
+  if (pages !== 1) {
+    console.log(`Still ${pages} page(s) — slightly smaller font (still keeping all bullets)`);
+    ({ resume, coverLetter } = compactForOnePage(resume, coverLetter, { hard: true }));
+    await writeFile(path.join(packDir, 'resume.json'), JSON.stringify(resume, null, 2));
+    await writeFile(path.join(packDir, 'cover_letter.json'), JSON.stringify(coverLetter, null, 2));
+    exported = await exportPdfs(resume, coverLetter);
+    pages = countPages();
+  }
+
+  console.log(
+    JSON.stringify(
+      { atsScore: ats.score, pages, missing: ats.missing.slice(0, 10), exported },
+      null,
+      2,
+    ),
+  );
+  if (pages !== 1) {
+    // Last resort: one more font nudge (never drop bullets)
+    console.log(`Still ${pages} page(s) — final font nudge`);
+    resume.layoutSettings = {
+      ...(resume.layoutSettings || {}),
+      fontSize: 8.5,
+      lineHeight: 1.12,
+    };
+    await writeFile(path.join(packDir, 'resume.json'), JSON.stringify(resume, null, 2));
+    exported = await exportPdfs(resume, coverLetter);
+    pages = countPages();
+  }
+  if (pages !== 1) {
+    console.error('WARN: resume is not 1 page after boost + compact');
     process.exit(3);
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isCli) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
