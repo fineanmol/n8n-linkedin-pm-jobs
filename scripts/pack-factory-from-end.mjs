@@ -21,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkLinkedInJobOpen } from './check-job-open.mjs';
 import { evaluateExperience } from './experience-filter.mjs';
+import { extractGermanRequired, shouldSkipForGerman } from './extract-german-required.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -309,6 +310,21 @@ async function processOne(job, tmpDir, { force = false } = {}) {
       experience_required: exp.experience_required,
     });
     logProgress({ ...job, result: 'NotQualified', notes: reason });
+    return { result: 'NotQualified' };
+  }
+
+  // German level qualification (skip if > B2)
+  const germanLevel = extractGermanRequired({ description: jd, title: job.position });
+  if (shouldSkipForGerman(germanLevel, 'B2')) {
+    const reason = `requires German level ${germanLevel} (>B2)`;
+    console.log(`  not qualified — ${reason}`);
+    await sheetPost({
+      job_id: job.job_id,
+      status: 'Only German Required',
+      notes: `ONLY GERMAN REQUIRED ${new Date().toISOString().slice(0, 10)} — ${reason} (pack factory)`,
+      german_required: germanLevel,
+    });
+    logProgress({ ...job, result: 'Only German Required', notes: reason });
     return { result: 'NotQualified' };
   }
 

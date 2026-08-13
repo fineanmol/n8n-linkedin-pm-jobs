@@ -26,5 +26,8 @@
   "homepage": "https://github.com/fineanmol/n8n-linkedin-pm-jobs#readme",
   "devDependencies": {
     "wrangler": "^4.111.0"
+  },
+  "dependencies": {
+    "workerd": "^1.20260813.1"
   }
 }

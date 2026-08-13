@@ -145,9 +145,10 @@ function tailorResume(master, { company, role, jd }) {
     'Agile & Strategy';
   resume.subtitle = noEmDash(`Product Manager | ${focus} | ${headlineTheme}`);
 
-  // Keep master summary — do not rewrite (avoids blank space / layout churn)
+  // Concise, domain-tailored 4-line summary (320-370 chars) to guarantee 1-page fit
+  const domainFocus = stackTheme || focus || 'B2B & SaaS';
   resume.resumeSummary = noEmDash(
-    String(master.resumeSummary || resume.resumeSummary || '').replace(/\*\*/g, ''),
+    `Results-driven Product Manager with 3.5+ years of experience in managing product lifecycles, cross-functional execution, and market analysis. Proven track record in translating customer and business requirements into clear roadmaps, prioritizing high-impact features, and driving data-driven product decisions to scale ${domainFocus.toLowerCase()} products.`
   );
 
   // Master skills as base. Only JD-matched themes move to the front — no hardcoded
@@ -397,7 +398,6 @@ export async function composePack(opts = {}) {
     resume_variant_id: `${slug(company)}_${slug(role)}_composer_${new Date().toISOString().slice(0, 10)}`,
     ats_score: atsScore,
     pack_folder: path.relative(ROOT, outDir),
-    form_answers: formAnswersToSheetString(formAnswers),
     notes: `Pack ready (ATS ${atsScore}). Manual apply. Keywords: ${keywords.join(', ') || 'general PM'}`,
   };
   if (opts.sheetRow || opts.sheet_row) {
