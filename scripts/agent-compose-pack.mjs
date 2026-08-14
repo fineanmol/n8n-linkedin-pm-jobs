@@ -212,12 +212,24 @@ function tailorResume(master, { company, role, jd }) {
   return { resume, keywords: themes.length ? themes : kws, focus };
 }
 
+function cleanRoleTitle(role) {
+  return String(role || '')
+    .replace(/\s*\([mwdfeall\s\/\*,-]+\)/gi, '')
+    .replace(/\s*\(all genders\)/gi, '')
+    .replace(/\s*\(befristet\)/gi, '')
+    .replace(/\s*\(\d+[- ]month.*?\)/gi, '')
+    .replace(/\s*[-–—]\s*(in Voll-|Vollzeit|Teilzeit|befristet).*$/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function tailorCoverLetter(master, { company, role, jd, keywords, focus }) {
   const cl = structuredClone(master);
+  const cleanedRole = cleanRoleTitle(role) || role;
   cl.companyName = company;
-  cl.jobTitle = role;
+  cl.jobTitle = cleanedRole;
   cl.salutation = `To the Hiring Team at ${company},`;
-  const roleLower = String(role || '').toLowerCase();
+  const roleLower = String(cleanedRole || '').toLowerCase();
   const jdLower = String(jd || '').toLowerCase();
   const isPmm = roleLower.includes('marketing') || jdLower.includes('product marketing');
   const isAi = /\bai\b|machine learning|\bllm\b|generative/.test(`${roleLower} ${jdLower}`);
@@ -225,17 +237,22 @@ function tailorCoverLetter(master, { company, role, jd, keywords, focus }) {
   const fill = (s) =>
     noEmDash(
       String(s || '')
-        .replaceAll('{{role}}', role)
+        .replaceAll('{{role}}', cleanedRole)
         .replaceAll('{{company}}', company)
+        .replaceAll(role, cleanedRole)
+        .replace(/\s*\([mwdfeall\s\/\*,-]+\)/gi, '')
+        .replace(/\s*\(all genders\)/gi, '')
+        .replace(/\s*\(befristet\)/gi, '')
+        .replace(/\s*\(\d+[- ]month.*?\)/gi, '')
         .replace(/\b3\+\s*years\b/gi, `${APPLICANT_YOE} years`)
         .replace(/\bInc\.\./g, 'Inc.')
-        .replace(/\bapply in the\b/i, 'apply for the'),
+        .replace(/\bapply in the\b/gi, 'apply for the'),
     );
 
   cl.p1 = fill(master.p1);
   if (!cl.p1 || cl.p1.includes('{{')) {
     cl.p1 = noEmDash(
-      `I am writing to apply for the ${role} role at ${company}. With ${APPLICANT_YOE} years of experience in product, market analysis, and agile execution, along with a Master's in International Management (Product Management & Strategy) from Berlin, I bring strategic thinking, a customer-centric approach, and a practical bias for measurable outcomes.`,
+      `I am writing to apply for the ${cleanedRole} role at ${company}. With ${APPLICANT_YOE} years of experience in product, market analysis, and agile execution, along with a Master's in International Management (Product Management & Strategy) from Berlin, I bring strategic thinking, a customer-centric approach, and a practical bias for measurable outcomes.`,
     );
   } else {
     cl.p1 = cl.p1.replace(/I am writing to express my keen interest/i, 'I am writing to apply');
