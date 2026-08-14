@@ -145,10 +145,13 @@ function tailorResume(master, { company, role, jd }) {
     'Agile & Strategy';
   resume.subtitle = noEmDash(`Product Manager | ${focus} | ${headlineTheme}`);
 
-  // Concise, domain-tailored 4-line summary (320-370 chars) to guarantee 1-page fit
-  const domainFocus = stackTheme || focus || 'B2B & SaaS';
+  // Concise, domain-tailored 4-line summary (320-365 chars) to guarantee 1-page fit
+  const topJdTerms = themes.filter((t) => !/^(product manager|product owner|product management)$/i.test(t)).slice(0, 2);
+  const coreCompetencies = topJdTerms.length > 0 ? topJdTerms.join(' and ') : 'product strategy and roadmap execution';
+  const roleContext = (/owner/i.test(role || '') ? 'Product Owner' : 'Product Manager');
+
   resume.resumeSummary = noEmDash(
-    `Results-driven Product Manager with 3.5+ years of experience in managing product lifecycles, cross-functional execution, and market analysis. Proven track record in translating customer and business requirements into clear roadmaps, prioritizing high-impact features, and driving data-driven product decisions to scale ${domainFocus.toLowerCase()} products.`
+    `Results-driven ${roleContext} with 3.5+ years of experience across product lifecycles, cross-functional execution, and market analysis. Proven track record in translating user and stakeholder requirements into clear roadmaps, prioritizing features, and leveraging ${coreCompetencies.toLowerCase()} to deliver high-impact digital solutions.`
   );
 
   // Master skills as base. Only JD-matched themes move to the front — no hardcoded
